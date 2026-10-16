@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: acalyze
+    runtime: node
+    plan: free              # fine to try it out; see DEPLOYMENT.md before real schools use it
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: acalyze-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PLATFORM_ADMIN_EMAIL        # your own sign-in, created on first boot
+        sync: false
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false
+      - key: PLATFORM_ADMIN_NAME
+        value: Platform Admin
+      - key: PAYBILL_NUMBER              # shown to schools on their Subscription page
+        sync: false
+      - key: APP_URL                     # e.g. https://app.acalyze.com (used in emails)
+        sync: false
+      - key: SEED_DEMO                   # "true" once, to create a demo school to click around in
+        value: "false"
+
+databases:
+  - name: acalyze-db
+    plan: free

@@ -1,0 +1,33 @@
+import { api } from '../api.js';
+import { esc, $, $$, toast, lineChart } from '../ui.js';
+import { renderCard, printHtml, cardOptions, termFromExam } from './reportcard.js';
+import { messages } from './chat.js';
+
+async function results(el, ctx) {
+  const [kids, exams] = await Promise.all([api('/students/mine'), api('/exams')]);
+  if (!kids.length) { el.innerHTML = `${ctx.bar('Report cards')}<div class="card empty">No children are linked to your account yet.<br>Please contact your child's school.</div>`; return; }
+  if (!exams.length) { el.innerHTML = `${ctx.bar('Report cards', kids.map((k) => k.full_name).join(', '))}<div class="card empty">No results have been published yet. Check back soon.</div>`; return; }
+  let kid = kids[0].id, exam = exams[0].id;
+  el.innerHTML = `${ctx.bar('Report cards', `Hello ${ctx.me.name || ''}`.trim())}
+  <div class="card no-print"><div class="form-grid">${kids.length > 1 ? `<div><label class="f" for="kid">Child</label><select class="i" id="kid">${kids.map((k) => `<option value="${k.id}">${esc(k.full_name)} (${esc(k.class_name || 'no class')})</option>`).join('')}</select></div>` : ''}
+    <div><label class="f" for="ex">Exam</label><select class="i" id="ex">${exams.map((e) => `<option value="${e.id}">${esc(e.name)}${e.academic_year ? ' · ' + esc(e.academic_year) : ''}</option>`).join('')}</select></div></div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="pr">Print or save as PDF</button></div></div>
+  <div id="card"><div class="empty">Loading…</div></div><div id="trend"></div>`;
+  let current = '';
+  const load = async () => {
+    $('#card', el).innerHTML = '<div class="empty">Loading…</div>'; $('#trend', el).innerHTML = '';
+    try {
+      const [r, trend] = await Promise.all([api(`/report-card/${kid}?examId=${exam}`), api(`/report-card/${kid}/trend`)]);
+      const o = { ...cardOptions(), term: termFromExam(r.exam), date: cardOptions().date };
+      current = renderCard(r.card, r.exam, o, trend);
+      $('#card', el).innerHTML = `<div class="ov">${current}</div>`;
+      if (r.card.template === 'classic' && trend.length > 1) $('#trend', el).innerHTML = `<div class="card no-print" style="max-width:860px;margin:16px auto"><h2 style="margin-bottom:8px">Progress across exams</h2>${lineChart(trend.map((t) => t.exam.name), [{ name: 'Mean', values: trend.map((t) => (t.mean != null ? Math.round(t.mean * 10) / 10 : null)) }], { unit: '%', title: 'Mean score across exams' })}</div>`;
+    } catch (e) { current = ''; $('#card', el).innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+  };
+  $('#kid', el)?.addEventListener('change', (e) => { kid = e.target.value; load(); });
+  $('#ex', el).onchange = (e) => { exam = e.target.value; load(); };
+  $('#pr', el).onclick = () => (current ? printHtml(current) : toast('Nothing to print yet.', 'bad'));
+  await load();
+}
+
+export const views = { results, messages };
