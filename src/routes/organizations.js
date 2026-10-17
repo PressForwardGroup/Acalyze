@@ -4,6 +4,7 @@ import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { hashPassword } from '../lib/auth.js';
 import { tempPassword } from '../lib/parents.js';
 import { forgetOrgStatus } from '../lib/orgStatus.js';
+import { sendEmail, appUrl } from '../lib/mail.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 
 export const organizationsRouter = Router();
@@ -74,7 +75,13 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
     [req.auth.sub, org.rows[0].id, r.id]
   );
 
+  // Email the credentials to the school's contact if email is set up; otherwise
+  // the platform admin sees them on screen (shown once) and passes them on.
+  const emailed = await sendEmail(r.contact_email, 'Your Acalyze school is ready',
+    `Hello${r.contact_name ? ' ' + r.contact_name : ''},\n\n${r.school_name} has been approved on Acalyze.\n\nSign in${appUrl() ? ' at ' + appUrl() : ''}\nEmail: ${adminEmail}\nTemporary password: ${adminPassword}\n\nPlease change your password after signing in.\n\nThe Acalyze team`);
+
   res.status(201).json({
+    emailed, emailedTo: emailed ? r.contact_email : null,
     organization: org.rows[0],
     center: center.rows[0],
     adminLogin: { email: adminEmail, password: adminPassword, note: 'Shown once. Send it to the school; they can change it after signing in.' },

@@ -5,24 +5,9 @@ import { hashPassword } from '../lib/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { normPhone } from '../lib/parents.js';
+import { sendEmail } from '../lib/mail.js';
 
 export const passwordRequestsRouter = Router();
-
-// Sends an email through Resend when RESEND_API_KEY and MAIL_FROM are set.
-// Returns true if sent; never throws. (Parents have no email, and SMS is not
-// set up yet, so for parents the admin hands over the temporary password.)
-async function sendEmail(to, subject, text) {
-  const key = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM;
-  if (!key || !from || !to) return false;
-  try {
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: [to], subject, text }),
-    });
-    return r.ok;
-  } catch { return false; }
-}
 
 function tempPassword() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';

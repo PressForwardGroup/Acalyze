@@ -1,8 +1,9 @@
 import { api, session } from '../api.js';
 import { esc, $, $$, kes, fmtDate, toast, run, table, pill, modal, copy } from '../ui.js';
+import { download } from './reportcard.js';
 
 // ---------- Subscription ----------
-const FEATURES = [['analytics', 'Grading, report cards and the admin analytics dashboard'], ['parents', 'Parent accounts: results and progress on the parent’s phone'], ['chat', 'Parent–teacher messaging'], ['sms', 'SMS alerts (coming soon)']];
+const FEATURES = [['analytics', 'Grading, report cards and the admin analytics dashboard'], ['parents', 'Parent accounts: results and progress on the parent’s phone'], ['chat', 'Parent–teacher messaging'], ['calendar', 'School calendar for staff and parents'], ['attendance', 'Daily attendance registers, with parents seeing their child’s record'], ['fees', 'School fees: charges, payments, balances and printed receipts'], ['sms', 'SMS alerts (coming soon)']];
 
 async function subscription(el, ctx) {
   const { subscription: s, school } = await api('/school-settings');
@@ -27,7 +28,7 @@ async function subscription(el, ctx) {
 
 // ---------- Settings ----------
 async function settings(el, ctx) {
-  const { school } = await api('/school-settings');
+  const [{ school }, exams] = await Promise.all([api('/school-settings'), api('/exams')]);
   let logo = school.logoUrl || '';
   el.innerHTML = `${ctx.bar('Settings', 'How your school appears on report cards')}
   <div class="card"><div class="form-grid">
@@ -38,7 +39,9 @@ async function settings(el, ctx) {
     <div style="margin-top:16px"><label class="f">School logo (shown on the classic report card)</label>
       <div class="row"><div id="lp" style="width:64px;height:64px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden"></div>
       <input type="file" id="lf" accept="image/png,image/jpeg,image/svg+xml" class="sm"><button class="btn sm" id="lc">Remove</button></div><div class="sm mut">PNG or JPG under 200 KB works best.</div></div>
-    <button class="btn primary" id="save" style="margin-top:18px">Save settings</button></div>`;
+    <button class="btn primary" id="save" style="margin-top:18px">Save settings</button></div>
+  <div class="card" style="margin-top:18px"><h2>Your data</h2><p class="sm mut" style="margin:6px 0 12px">Your school's data belongs to you. Download it any time as an Excel file: students, parents, teachers, classes and subjects, plus the marks and ranked results for an exam you choose.</p>
+    <div class="row"><select class="i" id="xex" style="width:auto;min-width:240px" aria-label="Exam to include"><option value="">People and classes only</option>${exams.map((e) => `<option value="${e.id}">${esc(e.name)}${e.academic_year ? ' · ' + esc(e.academic_year) : ''}</option>`).join('')}</select><button class="btn" id="xdl">Download Excel</button></div></div>`;
   const prev = () => { $('#lp', el).innerHTML = logo ? `<img src="${esc(logo)}" alt="Logo" style="max-width:100%;max-height:100%">` : '<span class="sm mut">None</span>'; };
   prev();
   $('#lf', el).onchange = (e) => {
@@ -47,6 +50,21 @@ async function settings(el, ctx) {
     const r = new FileReader(); r.onload = () => { logo = r.result; prev(); }; r.readAsDataURL(f);
   };
   $('#lc', el).onclick = () => { logo = ''; prev(); };
+  $('#xdl', el).onclick = (e) => run(e.currentTarget, async () => {
+    const id = $('#xex', el).value, d = await api(`/export/data${id ? `?examId=${id}` : ''}`);
+    await new Promise((res, rej) => { if (window.XLSX) return res(); const sc = Object.assign(document.createElement('script'), { src: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', onload: res, onerror: () => rej(new Error('Could not load the Excel writer. Check your connection.')) }); document.head.append(sc); });
+    const wb = window.XLSX.utils.book_new(), add = (name, rows) => rows.length && window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rows), name);
+    add('Students', d.students.map((x) => ({ 'Admission no': x.school_id_number, Name: x.full_name, Class: x.class_name, 'KCPE marks': x.kcpe_marks, Status: x.status, Enrolled: x.enrollment_date?.slice(0, 10) })));
+    add('Parents', d.parents.map((x) => ({ Name: x.full_name, Phone: x.phone, Children: x.children })));
+    add('Teachers', d.teachers.map((x) => ({ Name: x.full_name, Email: x.email, Phone: x.phone, Section: x.section, Teaches: x.teaches })));
+    add('Classes', d.classes.map((x) => ({ Class: x.name, Grade: x.grade, Stream: x.stream, Grading: x.grading_scheme === 'cbc' ? 'CBC' : '8-4-4', 'Class teacher': x.class_teacher })));
+    add('Subjects', d.subjects.map((x) => ({ Subject: x.name, Code: x.code, Science: x.is_science ? 'Yes' : '' })));
+    add('Results', d.results.map((x) => ({ Class: x.class_name, 'Admission no': x.school_id_number, Student: x.student, 'Subjects done': x.subjects_done, 'Total marks': x.total_marks, 'Mean %': x.mean, 'Total points': x.total_points, 'Mean points': x.mean_points, Grade: x.grade, Position: x.position, 'Out of': x.out_of, 'Class position': x.class_position, Status: x.status })));
+    add('Marks', d.marks.map((x) => ({ 'Admission no': x.school_id_number, Student: x.student, Class: x.class_name, Subject: x.subject, 'Score %': x.percent, Grade: x.grade, Points: x.points })));
+    const out = window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    download(`${(d.school || 'school').replace(/\W+/g, '_')}-data${d.exam ? '-' + d.exam.name.replace(/\W+/g, '_') : ''}.xlsx`, out, 'application/octet-stream');
+    toast('Download started', 'ok');
+  });
   $('#save', el).onclick = (e) => run(e.currentTarget, async () => {
     await api('/school-settings', { method: 'PATCH', body: { motto: $('#motto', el).value.trim(), logoUrl: logo, reportCardTemplate: $('#tpl', el).value, defaultGradingScheme: $('#sch', el).value } });
     toast('Settings saved', 'ok');

@@ -3,9 +3,9 @@ import { esc, $, $$, kes, fmtDate, toast, run, table, stat, pill, modal, confirm
 import { resets } from './account.js';
 
 const PLAN_INFO = {
-  'Analytics': { suggest: 150, has: ['Grading & report cards', 'Admin analytics dashboard'] },
-  'Analytics + Parents': { suggest: 250, has: ['Everything in Analytics', 'Parent accounts & report cards'] },
-  'Full Suite': { suggest: 400, has: ['Everything in Analytics + Parents', 'Parent–teacher messaging', 'SMS alerts (when set up)'] },
+  'Analytics': { suggest: 150, has: ['Grading & report cards', 'Admin analytics dashboard', 'Excel import, early-warning list, school calendar'] },
+  'Analytics + Parents': { suggest: 250, has: ['Everything in Analytics', 'Parent accounts & report cards', 'Attendance registers (parents see their child’s)'] },
+  'Full Suite': { suggest: 400, has: ['Everything in Analytics + Parents', 'Parent–teacher messaging', 'School fees, payments and receipts', 'SMS alerts (when set up)'] },
   'Custom': { suggest: '', has: ['Everything included. You set the price.'] },
 };
 const statusPill = (s) => (s === 'active' ? pill('Active', 'ok') : s === 'suspended' ? pill('Suspended', 'bad') : pill(s, 'warn'));
@@ -18,7 +18,7 @@ async function overview(el, ctx) {
   let cum = 0; const growth = s.growth.map((g) => ({ label: g.month, v: (cum += g.schools) }));
   const money = Object.fromEntries(s.invoices.map((i) => [i.status, i]));
   el.innerHTML = `${ctx.bar('Platform overview', 'Every school on Acalyze')}
-  <div class="grid g4 fade">${stat('Active schools', t.active_schools, { sub: t.suspended_schools ? `${t.suspended_schools} suspended` : '' })}${stat('Students', t.students.toLocaleString())}${stat('Teachers & parents', `${t.teachers.toLocaleString()} · ${t.parents.toLocaleString()}`)}${stat('Billing estimate (per cycle)', kes(t.estimated_billing), { accent: true, sub: 'rate × students, all schools' })}</div>
+  <div class="grid g4 fade">${stat('Active schools', t.active_schools, { tone: 'green', sub: t.suspended_schools ? `${t.suspended_schools} suspended` : '' })}${stat('Students', t.students.toLocaleString(), { tone: 'navy' })}${stat('Teachers & parents', `${t.teachers.toLocaleString()} · ${t.parents.toLocaleString()}`, { tone: 'gold' })}${stat('Billing estimate (per cycle)', kes(t.estimated_billing), { tone: 'red', sub: 'rate × students, all schools' })}</div>
   ${s.pendingRegistrations ? `<div class="notice" style="margin-top:16px"><b>${s.pendingRegistrations}</b> school${s.pendingRegistrations > 1 ? 's are' : ' is'} waiting for approval. <a href="#/app/registrations"><b>Review now</b></a></div>` : ''}
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h2 style="margin-bottom:10px">Schools over time</h2>${growth.length ? lineChart(growth.map((g) => g.label), [{ name: 'Schools', values: growth.map((g) => g.v) }], { title: 'Total schools by month' }) : '<div class="empty">No schools yet.</div>'}</div>
@@ -40,7 +40,7 @@ async function registrations(el, ctx) {
     $$('[data-ok]', el).forEach((b) => (b.onclick = () => run(b, async () => {
       const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST' });
       const msg = `Welcome to Acalyze! Your school workspace is ready.\nSign in at ${location.origin}\nEmail: ${r.adminLogin.email}\nTemporary password: ${r.adminLogin.password}\nPlease change your password after signing in.`;
-      modal(`<h3>${esc(r.organization.name)} is set up</h3><p class="sm mut">Send these sign-in details to the school. The password is shown only once.</p><textarea class="i" readonly style="min-height:130px">${esc(msg)}</textarea>
+      modal(`<h3>${esc(r.organization.name)} is set up</h3>${r.emailed ? `<div class="notice ok">The sign-in details were emailed to ${esc(r.emailedTo)}.</div>` : ''}<p class="sm mut">${r.emailed ? 'You can also copy them here.' : 'Send these sign-in details to the school.'} The password is shown only once.</p><textarea class="i" readonly style="min-height:130px">${esc(msg)}</textarea>
         <div class="row" style="margin-top:14px;justify-content:space-between"><button class="btn" id="cp">Copy message</button><a class="btn primary" href="#/app/schools" data-close>Go to schools</a></div>`, { onMount: (m) => { $('#cp', m).onclick = () => copy(msg); } });
       draw(); ctx.refreshBadges();
     })));
@@ -119,7 +119,7 @@ async function billing(el, ctx) {
   el.innerHTML = `${ctx.bar('Billing', 'What each school pays, and what has been collected')}
   <div class="card" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center"><div><div class="b">Where payments land</div><div class="sm mut">One M-Pesa Paybill for the whole platform. Each school pays with its own code as the account number.</div></div>
     <div class="row sm" style="gap:24px"><div><span class="mut">Paybill</span> <b class="secret">${s.paybill ? esc(s.paybill) : 'not set (add PAYBILL_NUMBER to your server settings)'}</b></div></div></div>
-  <div class="grid g3" style="margin-top:16px">${stat('Estimated per billing cycle', kes(s.totals.estimated_billing), { accent: true })}${stat('Collected', kes(s.invoices.find((i) => i.status === 'paid')?.total || 0))}${stat('Waiting to be paid', kes((s.invoices.find((i) => i.status === 'pending')?.total || 0) + (s.invoices.find((i) => i.status === 'overdue')?.total || 0)))}</div>
+  <div class="grid g3" style="margin-top:16px">${stat('Estimated per billing cycle', kes(s.totals.estimated_billing), { tone: 'navy' })}${stat('Collected', kes(s.invoices.find((i) => i.status === 'paid')?.total || 0), { tone: 'green' })}${stat('Waiting to be paid', kes((s.invoices.find((i) => i.status === 'pending')?.total || 0) + (s.invoices.find((i) => i.status === 'overdue')?.total || 0), { tone: 'red' }))}</div>
   <div class="card pad0" style="margin-top:16px">${table(['School', 'Account no.', 'Plan', 'Price', 'Students', 'Estimated', 'Billed', 'Latest invoice', ''], active.map((o) => [`<b>${esc(o.name)}</b>`, `<span class="secret">${esc(o.org_code)}</span>`, o.plan_name ? esc(o.plan_name) : pill('Not set', 'warn'), o.rate_per_student != null ? kes(o.rate_per_student) : '—', o.student_count.toLocaleString(), est(o) != null ? `<b>${kes(est(o))}</b>` : '—', o.billing_cycle === 'termly' ? 'Each term' : 'Yearly', invPill(o.latest_invoice_status), `<div class="row" style="gap:6px"><button class="btn sm" data-plan="${o.id}">Price</button><button class="btn sm primary" data-inv="${o.id}">Invoices</button></div>`]), { empty: 'No active schools yet.' })}</div>
   <p class="sm mut" style="margin-top:12px">Payments are confirmed by hand for now: check the M-Pesa message, then press "Mark paid" on the invoice.</p>`;
   const by = (id) => list.find((x) => x.id === id), refresh = () => billing(el, ctx);

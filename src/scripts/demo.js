@@ -29,28 +29,73 @@ export async function seedDemoSchool() {
       `INSERT INTO classes (organization_id, center_id, name, grade, stream, section, grading_scheme, class_teacher_id)
        VALUES ($1,$2,$3,'Form 3',$4,'SENIOR','844',$5) RETURNING id`, [org, center, `Form 3 ${stream}`, stream, teacher])).rows[0].id);
   }
-  const exam = (await query(`INSERT INTO exams (organization_id, center_id, name, term, academic_year, is_published) VALUES ($1,$2,'Term 2 End Exam','Term 2','2026',true) RETURNING id`, [org, center])).rows[0].id;
+  // Two exams, so trends, "most improved / biggest drops" and "students to watch" have something to show.
+  const mkExam = async (name, term, published, daysAgo) => (await query(
+    `INSERT INTO exams (organization_id, center_id, name, term, academic_year, is_published, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6, now() - ($7::int * interval '1 day')) RETURNING id`, [org, center, name, term, String(new Date().getFullYear()), published, daysAgo])).rows[0].id;
+  const exam1 = await mkExam('Term 1 End Exam', 'Term 1', true, 95);
+  const exam2 = await mkExam('Term 2 End Exam', 'Term 2', true, 5);
 
   const names = ['Amina Otieno','Brian Kiprop','Carol Wanjiru','Daniel Mwangi','Esther Achieng','Faith Njeri','George Omondi','Hellen Chebet',
                  'Isaac Mutua','Joy Wambui','Kevin Maina','Linet Akinyi','Moses Kariuki','Nancy Atieno','Oscar Kimani','Purity Moraa'];
   let seedN = 7; const rnd = () => (seedN = (seedN * 9301 + 49297) % 233280) / 233280;
+  const studentIds = [];
   for (let i = 0; i < names.length; i++) {
     const adm = `DEM-${String(i + 1).padStart(3, '0')}`;
     const cls = classes[i % 2];
     const st = (await query(`INSERT INTO students (organization_id, center_id, school_id_number, full_name, class_id, kcpe_marks) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
       [org, center, adm, names[i], cls, 330 + Math.floor(rnd() * 120)])).rows[0].id;
+    studentIds.push({ id: st, cls });
     const ability = 45 + rnd() * 40;
-    for (const sub of subjects) {
-      if (i === 5 && sub.id === subjects[4].id) continue; // one student short of subjects, to show the "W" case
-      const pct = Math.max(8, Math.min(98, Math.round(ability + (rnd() - 0.5) * 30)));
-      const g = gradeFor('844', pct, { isScience: sub.is_science, formLevel: 3 });
-      await query(`INSERT INTO marks (exam_id, student_id, subject_id, grade, points, percent, entered_by_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [exam, st, sub.id, g.grade, g.points, pct, teacher]);
+    // Term 2 differs from Term 1: a few students slip, a few improve.
+    const delta = i === 3 ? -24 : i === 9 ? -14 : i === 6 ? 13 : i === 11 ? 11 : (rnd() - 0.5) * 6;
+    for (const [exam, base] of [[exam1, ability], [exam2, ability + delta]]) {
+      for (const sub of subjects) {
+        if (exam === exam2 && i === 5 && sub.id === subjects[4].id) continue;     // one student short of subjects, to show the "W" case
+        if (exam === exam2 && i === 13) continue;                                  // one student who missed the exam
+        const pct = Math.max(8, Math.min(98, Math.round(base + (rnd() - 0.5) * 30)));
+        const g = gradeFor('844', pct, { isScience: sub.is_science, formLevel: 3 });
+        await query(`INSERT INTO marks (exam_id, student_id, subject_id, grade, points, percent, entered_by_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [exam, st, sub.id, g.grade, g.points, pct, teacher]);
+      }
     }
     if (i < 8) await linkParent({ organizationId: org, studentId: st, parentName: `Parent of ${names[i].split(' ')[0]}`, parentPhone: `07120000${String(10 + i)}` });
   }
   await query(`UPDATE parents SET password_hash = $1, password_changed = true WHERE organization_id = $2`, [await hashPassword('Demo@2026'), org]);
   await query(`INSERT INTO teacher_assignments (teacher_id, class_id, subject_id) SELECT $1, c, s FROM unnest($2::uuid[]) c, unnest($3::uuid[]) s`,
     [teacher, classes, subjects.map((s) => s.id)]);
+
+  // Attendance for the last two school weeks (one student is often away).
+  for (let d = 1; d <= 14; d++) {
+    for (let i = 0; i < studentIds.length; i++) {
+      const r = rnd(), status = r < (i === 3 ? 0.55 : 0.88) ? 'present' : r < (i === 3 ? 0.7 : 0.95) ? 'late' : 'absent';
+      await query(
+        `INSERT INTO attendance (organization_id, student_id, class_id, day, status, recorded_by_id)
+         SELECT $1, $2, $3, current_date - $4::int, $5, $6 WHERE extract(isodow FROM current_date - $4::int) < 6`,
+        [org, studentIds[i].id, studentIds[i].cls, d, status, teacher]);
+    }
+  }
+
+  // Fees: tuition for Form 3 plus a charge for everyone; most students have paid something, with receipts.
+  const year = String(new Date().getFullYear());
+  await query(`INSERT INTO fee_items (organization_id, name, amount, academic_year, term, grade) VALUES ($1,'Tuition',40000,$2,NULL,'Form 3'),($1,'Lunch and activities',8000,$2,NULL,NULL)`, [org, year]);
+  const methods = ['mpesa', 'cash', 'bank'];
+  for (let i = 0; i < studentIds.length; i++) {
+    const total = [48000, 30000, 20000, 0][i % 4]; if (!total) continue;
+    const parts = i % 2 ? [total] : [Math.round(total * 0.6), total - Math.round(total * 0.6)];
+    for (let k = 0; k < parts.length; k++) {
+      await query(
+        `INSERT INTO fee_payments (organization_id, student_id, academic_year, amount, method, reference, paid_on, receipt_no)
+         VALUES ($1,$2,$3,$4,$5,$6, current_date - $7::int, 'DEM-' || lpad(nextval('fee_receipt_seq')::text, 6, '0'))`,
+        [org, studentIds[i].id, year, parts[k], methods[(i + k) % 3], methods[(i + k) % 3] === 'mpesa' ? `QK${100000 + i * 7 + k}` : null, 60 - k * 25 - i]);
+    }
+  }
+
+  // Calendar
+  const ev = [['Term 2 closes', 'term', 3, null, 'all'], ['Parents’ meeting', 'meeting', 12, null, 'all'], ['Term 3 opens', 'term', 38, null, 'all'], ['Mid-term break', 'holiday', 60, 64, 'all'],
+              ['Staff planning day', 'meeting', 8, null, 'staff'], ['Term 3 end exams', 'exam', 90, 97, 'all'], ['Sports day', 'event', 52, null, 'all']];
+  for (const [title, kind, from, to, audience] of ev) {
+    await query(`INSERT INTO events (organization_id, title, kind, starts_on, ends_on, audience) VALUES ($1,$2,$3,current_date + $4::int, CASE WHEN $5::int IS NULL THEN NULL ELSE current_date + $5::int END, $6)`, [org, title, kind, from, to, audience]);
+  }
   console.log('[seed] Demo school ready: admin@demo.acalyze.app / Demo@2026 (parents: 0712000010.. / Demo@2026)');
 }

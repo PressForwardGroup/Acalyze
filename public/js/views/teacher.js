@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { esc, $, $$, num, toast, run, table, pill } from '../ui.js';
 import { messages } from './chat.js';
+import * as school from './school.js';
 
 const opt = (rows, val, label, sel) => rows.map((r) => `<option value="${esc(val(r))}" ${val(r) === sel ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
 const median = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
@@ -77,4 +78,4 @@ async function myclass(el, ctx) {
   await load();
 }
 
-export const views = { marks, myclass, messages };
+export const views = { marks, attendance: school.views.attendance, myclass, messages, calendar: school.views.calendar };

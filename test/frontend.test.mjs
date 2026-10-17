@@ -18,6 +18,9 @@ test('charts render, escape their labels, and handle empty and single-point data
   assert.equal((U.donut([{ label: 'A', value: 3 }, { label: 'B', value: 1 }]).match(/<circle/g) || []).length, 2);
   assert.ok(U.donut([{ label: 'A', value: 0 }]).includes('No data'));
 });
+test('a calendar date shows as that exact day, whatever the timezone', () => {
+  assert.match(U.fmtDate('2026-10-16'), /^16 Oct 2026$/); assert.match(U.fmtDate('2027-01-01'), /^01 Jan 2027$/); assert.equal(U.fmtDate(null), '—');
+});
 test('number and money formatting', () => {
   assert.equal(U.num(71.45), '71.5'); assert.equal(U.num(null), '—'); assert.equal(U.kes(336800), 'KSh 336,800');
 });

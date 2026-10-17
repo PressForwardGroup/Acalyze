@@ -21,6 +21,13 @@ CREATE TYPE org_status AS ENUM ('pending', 'active', 'suspended');
 CREATE TYPE report_card_template AS ENUM ('classic', 'modern');
 CREATE TYPE billing_cycle AS ENUM ('annual', 'termly');
 
+-- Which migrations have been applied (see db/migrations/README.md). Version 1 is this file.
+CREATE TABLE schema_migrations (
+  version     int PRIMARY KEY,
+  name        text NOT NULL,
+  applied_at  timestamptz NOT NULL DEFAULT now()
+);
+
 -- ---------- PLATFORM LAYER (new — this is what MOHI never had) ----------
 
 -- Inbound public registrations, before an org exists. A row here becomes
@@ -328,6 +335,70 @@ CREATE TABLE messages (
 );
 CREATE INDEX idx_messages_pair ON messages(parent_id, teacher_id, created_at);
 CREATE INDEX idx_messages_org ON messages(organization_id);
+
+-- ---------- ATTENDANCE ----------
+-- One row per student per day. Recorded by the teacher; parents see their own child's.
+CREATE TABLE attendance (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  student_id      uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  class_id        uuid REFERENCES classes(id) ON DELETE SET NULL,
+  day             date NOT NULL,
+  status          text NOT NULL CHECK (status IN ('present','absent','late','excused')),
+  recorded_by_id  uuid REFERENCES teachers(id) ON DELETE SET NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (student_id, day)
+);
+CREATE INDEX idx_attendance_org_day ON attendance(organization_id, day);
+CREATE INDEX idx_attendance_class_day ON attendance(class_id, day);
+
+-- ---------- SCHOOL FEES ----------
+-- What the school charges (per year, optionally per term, for everyone or one grade)...
+CREATE TABLE fee_items (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name            text NOT NULL,                        -- "Tuition", "Lunch", "Transport"
+  amount          numeric(12,2) NOT NULL CHECK (amount >= 0),
+  academic_year   text NOT NULL,
+  term            text,                                 -- null = the whole year
+  grade           text,                                 -- null = every student; else only that grade, e.g. "Form 3"
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_fee_items_org ON fee_items(organization_id, academic_year);
+
+-- ...and what has been paid. Balance = charges that apply to the student - payments, per year.
+CREATE SEQUENCE fee_receipt_seq;
+CREATE TABLE fee_payments (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  student_id      uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  academic_year   text NOT NULL,
+  amount          numeric(12,2) NOT NULL CHECK (amount > 0),
+  method          text NOT NULL DEFAULT 'cash' CHECK (method IN ('cash','mpesa','bank','other')),
+  reference       text,                                 -- e.g. the M-Pesa code
+  paid_on         date NOT NULL DEFAULT current_date,
+  receipt_no      text NOT NULL,
+  note            text,
+  recorded_by_id  uuid REFERENCES admins(id) ON DELETE SET NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (organization_id, receipt_no)
+);
+CREATE INDEX idx_fee_payments_student ON fee_payments(student_id, academic_year);
+CREATE INDEX idx_fee_payments_org ON fee_payments(organization_id, paid_on);
+
+-- ---------- SCHOOL CALENDAR ----------
+CREATE TABLE events (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  title           text NOT NULL,
+  description     text,
+  starts_on       date NOT NULL,
+  ends_on         date,
+  kind            text NOT NULL DEFAULT 'event' CHECK (kind IN ('term','exam','holiday','meeting','event')),
+  audience        text NOT NULL DEFAULT 'all' CHECK (audience IN ('all','staff')),   -- 'staff' is hidden from parents
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_events_org ON events(organization_id, starts_on);
 
 -- ---------- BILLING (records only — Phase 5/Daraja wiring comes later) ----------
 
