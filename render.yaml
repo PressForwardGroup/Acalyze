@@ -21,6 +21,10 @@ services:
         value: Platform Admin
       - key: PAYBILL_NUMBER              # shown to schools on their Subscription page
         sync: false
+      - key: SUPPORT_EMAIL               # shown to school admins as Acalyze support
+        sync: false
+      - key: SUPPORT_PHONE
+        sync: false
       - key: APP_URL                     # e.g. https://app.acalyze.com (used in emails)
         sync: false
       - key: SEED_DEMO                   # "true" once, to create a demo school to click around in

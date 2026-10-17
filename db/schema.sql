@@ -64,6 +64,10 @@ CREATE TABLE organizations (
   -- Branding, used on report cards and the school's own login screen.
   motto                 text,
   logo_url              text,
+  -- Support contact shown to this school's parents (defaults to the school's registration contact).
+  support_email         text,
+  support_phone         text,
+  support_note          text,
   created_at            timestamptz NOT NULL DEFAULT now()
 );
 

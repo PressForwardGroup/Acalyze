@@ -140,6 +140,9 @@ authRouter.post('/platform/view-org', asyncHandler(async (req, res) => {
 }));
 
 // ---------- PROFILE ----------
+// Acalyze's own support contact, set in the server settings (SUPPORT_EMAIL / SUPPORT_PHONE).
+const platformSupport = () => (process.env.SUPPORT_EMAIL || process.env.SUPPORT_PHONE)
+  ? { title: 'Need help with Acalyze? Contact Acalyze support', email: process.env.SUPPORT_EMAIL || null, phone: process.env.SUPPORT_PHONE || null, note: null } : null;
 authRouter.get('/me', asyncHandler(async (req, res) => {
   const c = claimsFrom(req, res); if (!c) return;
 
@@ -159,7 +162,7 @@ authRouter.get('/me', asyncHandler(async (req, res) => {
       `SELECT a.full_name, a.email, o.name AS org FROM admins a JOIN organizations o ON o.id = $2 WHERE a.id = $1`,
       [c.sub, c.organizationId]);
     if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
-    return res.json({ id: c.sub, name: rows[0].full_name, email: rows[0].email, organization: rows[0].org, roleLabel: 'School Admin', actingAsPlatformAdmin: !!c.actingAsPlatformAdmin });
+    return res.json({ id: c.sub, name: rows[0].full_name, email: rows[0].email, organization: rows[0].org, roleLabel: 'School Admin', actingAsPlatformAdmin: !!c.actingAsPlatformAdmin, support: platformSupport() });
   }
   if (c.role === 'teacher') {
     const { rows } = await query(
@@ -171,7 +174,11 @@ authRouter.get('/me', asyncHandler(async (req, res) => {
   if (c.role === 'parent') {
     const { rows } = await query(`SELECT full_name, phone FROM parents WHERE id = $1`, [c.sub]);
     if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
-    return res.json({ id: c.sub, name: rows[0].full_name, phone: rows[0].phone, roleLabel: 'Parent' });
+    // Taken from the parent's own school (organization in their token), never another school's.
+    const o = (await query(`SELECT name, support_email, support_phone, support_note FROM organizations WHERE id = $1`, [c.organizationId])).rows[0];
+    const support = o && (o.support_email || o.support_phone)
+      ? { title: `Need help? Contact ${o.name}`, email: o.support_email, phone: o.support_phone, note: o.support_note } : null;
+    return res.json({ id: c.sub, name: rows[0].full_name, phone: rows[0].phone, roleLabel: 'Parent', support });
   }
   return res.status(403).json({ error: 'Not available for this account' });
 }));
