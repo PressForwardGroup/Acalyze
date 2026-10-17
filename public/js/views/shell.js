@@ -4,12 +4,13 @@ import { esc, $, $$, toast, theme } from '../ui.js';
 // Navigation per role. 'sec' rows are section headings.
 const NAV = {
   platform_admin: [['overview', 'Overview'], ['registrations', 'Registrations', 'regs'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
-  admin: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['reportcards', 'Report cards'],
-    ['sec', 'Set up'], ['classes', 'Classes'], ['subjects', 'Subjects'], ['teachers', 'Teachers'], ['students', 'Students'], ['exams', 'Exams'], ['marks', 'Marks upload'],
-    ['sec', 'People'], ['parents', 'Parents', 'parentsLock'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
+  admin: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
+    ['sec', 'Set up'], ['classes', 'Classes'], ['subjects', 'Subjects'], ['teachers', 'Teachers'], ['students', 'Students'], ['exams', 'Exams'], ['marks', 'Marks upload'], ['excel', 'Import from Excel'],
+    ['sec', 'People'], ['parents', 'Parents', 'lock:parents'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
+    ['sec', 'School life'], ['attendance', 'Attendance', 'lock:attendance'], ['fees', 'Fees', 'lock:fees'], ['calendar', 'Calendar', 'lock:calendar'],
     ['sec', 'Account'], ['subscription', 'Subscription'], ['settings', 'Settings']],
-  teacher: [['marks', 'Enter marks'], ['myclass', 'My class results'], ['messages', 'Messages', 'unread']],
-  parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread']],
+  teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class results'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
+  parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
 };
 const MODULE = {
   platform_admin: () => import('./platform.js'),
@@ -34,7 +35,7 @@ export async function mountShell(app, s, viewKey) {
   app.innerHTML = `${acting ? `<div class="banner no-print"><span>Viewing <b>${esc(me.organization || 'a school')}</b> as Acalyze support.</span><button class="btn sm" id="exitAct">Back to platform</button></div>` : ''}
   <div class="shell"><aside class="side no-print" id="side"><div class="brand"><i></i>Acalyze</div>
     <nav class="nav" aria-label="Main">${items.map(([k, label, badge]) => k === 'sec' ? `<div class="sec">${esc(label)}</div>`
-      : `<a href="#/app/${k}" data-k="${k}" class="${k === key ? 'on' : ''}"><span>${esc(label)}${badge === 'parentsLock' && !features.parents ? ' 🔒' : ''}</span><span class="badge hide" data-badge="${badge || ''}"></span></a>`).join('')}</nav>
+      : `<a href="#/app/${k}" data-k="${k}" class="${k === key ? 'on' : ''}"><span>${esc(label)}${badge?.startsWith('lock:') && features[badge.slice(5)] === false ? ' 🔒' : ''}</span><span class="badge hide" data-badge="${badge?.startsWith('lock:') ? '' : badge || ''}"></span></a>`).join('')}</nav>
     <div class="side-foot"><b>${esc(me.name || '')}</b>${esc(me.organization || me.roleLabel || '')}
       <div class="row" style="margin-top:10px"><button class="btn sm" id="themeBtn">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button><button class="btn sm" id="pwBtn">Password</button><button class="btn sm" id="out">Sign out</button></div></div></aside>
     <main class="main" id="main" tabindex="-1"></main></div>`;

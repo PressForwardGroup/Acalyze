@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '../lib/db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { sendEmail } from '../lib/mail.js';
 
 export const registrationRouter = Router();
 
@@ -18,5 +19,13 @@ registrationRouter.post('/', asyncHandler(async (req, res) => {
     [schoolName.trim(), location || null, contactName || null, contactEmail.trim().toLowerCase(),
      contactPhone || null, systemUsed || null, approxStudents ? parseInt(approxStudents, 10) || null : null]
   );
+  // Best-effort emails: a receipt for the school, and a heads-up for you.
+  const email = contactEmail.trim().toLowerCase();
+  sendEmail(email, 'We received your Acalyze registration',
+    `Hello${contactName ? ' ' + contactName : ''},\n\nThanks for registering ${schoolName.trim()} with Acalyze. We'll review your request and get back to you within one working day.\n\nThe Acalyze team`);
+  if (process.env.PLATFORM_ADMIN_EMAIL) {
+    sendEmail(process.env.PLATFORM_ADMIN_EMAIL, `New school registration: ${schoolName.trim()}`,
+      `${schoolName.trim()} (${location || 'no location'}) registered.\nContact: ${contactName || ''} ${email} ${contactPhone || ''}\nCurriculum: ${systemUsed || '-'}, about ${approxStudents || '?'} students.\n\nReview it under Registrations.`);
+  }
   res.status(201).json({ ok: true, id: rows[0].id, message: "Thanks — we'll review this and get back to you within one working day." });
 }));

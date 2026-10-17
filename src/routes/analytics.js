@@ -3,6 +3,7 @@ import { query } from '../lib/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { examAnalytics } from '../lib/analytics.js';
+import { riskReport } from '../lib/risk.js';
 
 export const analyticsRouter = Router();
 analyticsRouter.use(requireAuth, requireRole('admin'));
@@ -44,4 +45,13 @@ analyticsRouter.get('/exam/:examId', asyncHandler(async (req, res) => {
   if (!exam.rows[0]) return res.status(404).json({ error: 'Exam not found at your school' });
   const data = await examAnalytics({ organizationId: req.auth.organizationId, examId: req.params.examId });
   res.json({ exam: exam.rows[0], ...data });
+}));
+
+// Students to watch: early-warning flags from each student's recent exams.
+analyticsRouter.get('/risk', asyncHandler(async (req, res) => {
+  const { examId } = req.query;
+  if (!examId) return res.status(400).json({ error: 'examId is required' });
+  const ok = await query(`SELECT 1 FROM exams WHERE id = $1 AND organization_id = $2`, [examId, req.auth.organizationId]);
+  if (!ok.rows[0]) return res.status(404).json({ error: 'Exam not found at your school' });
+  res.json(await riskReport({ organizationId: req.auth.organizationId, examId }));
 }));

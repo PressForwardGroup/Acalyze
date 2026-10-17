@@ -26,7 +26,7 @@ test('every table and column used in a query exists in the schema', () => {
     const alias = {};
     for (const m of q.matchAll(/\b(?:FROM|JOIN|(?<!DO )UPDATE|INTO)\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/gi)) {
       const [, t, a] = m;
-      if (['select', 'unnest', 'X'].includes(t)) continue;
+      if (['select', 'unnest', 'X', 'current_date', 'now'].includes(t)) continue;   // not tables: extract(... FROM current_date)
       if (!tables[t]) { problems.push(`${file}: unknown table "${t}"`); continue; }
       alias[t] = t; if (a && !KW.has(a.toUpperCase())) alias[a] = t;
     }

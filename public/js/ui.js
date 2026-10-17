@@ -7,7 +7,12 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const num = (n, d = 1) => (n == null || Number.isNaN(+n) ? '—' : (+n).toFixed(d).replace(/\.0+$/, ''));
 export const kes = (n) => (n == null ? '—' : 'KSh ' + Math.round(+n).toLocaleString('en-KE'));
-export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+// "2026-10-16" (a calendar date, no time) is shown as that exact day in any timezone; real timestamps use the viewer's local time.
+export const fmtDate = (d) => {
+  if (!d) return '—';
+  const m = typeof d === 'string' && d.length === 10 && d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return (m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(d)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 export const initials = (n) => String(n || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 // ---------- theme ----------
@@ -128,7 +133,7 @@ export function donut(parts, { size = 170, title = 'Breakdown', center } = {}) {
 
 export const progress = (pct) => `<div class="bar" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
 export const pill = (text, kind = '') => `<span class="pill ${kind}">${esc(text)}</span>`;
-export const stat = (label, value, { accent, sub } = {}) => `<div class="card stat ${accent ? 'accent' : ''}"><span class="l">${esc(label)}</span><span class="n">${esc(value)}</span>${sub ? `<span class="sm mut">${esc(sub)}</span>` : ''}</div>`;
+export const stat = (label, value, { accent, sub, tone } = {}) => `<div class="card stat ${tone ? 'tone-' + tone : accent ? 'tone-red' : ''}"><span class="l">${esc(label)}</span><span class="n">${esc(value)}</span>${sub ? `<span class="sm mut">${esc(sub)}</span>` : ''}</div>`;
 export const table = (heads, rows, { empty = 'Nothing here yet.' } = {}) => rows.length
   ? `<div class="ov"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
   : `<div class="empty">${esc(empty)}</div>`;

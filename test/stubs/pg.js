@@ -11,6 +11,7 @@ class Pool {
     if (t.includes('FROM subjects')) return { rows: D.subjects };
     if (t.includes('FROM marks m')) return { rows: D.marks[params[0]] || [] };
     if (t.includes('FROM remarks r')) return { rows: [] };
+    if (t.includes('created_at <= (SELECT created_at FROM exams')) return { rows: D.recentExams || [] };
     if (t.includes('created_at < (SELECT created_at FROM exams')) return { rows: D.prevExam ? [{ id: D.prevExam }] : [] };
     throw new Error('Unmatched SQL in stand-in: ' + t.slice(0, 90));
   }

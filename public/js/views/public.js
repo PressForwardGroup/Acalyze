@@ -12,13 +12,13 @@ export function publicHome(root) {
   <section class="hero"><div>
     <h1>Results your whole school can stand behind.</h1>
     <p>Acalyze turns raw marks into trusted report cards and clear analytics. Graded and ranked the way your school already does it, for both 8-4-4 and CBC, with parents kept in the loop.</p>
-    <div class="row"><a class="btn primary" href="#/register">Register your school</a><a class="btn" href="#/login">Sign in</a></div>
-    <p class="sm mut" style="margin-top:34px;font-size:13px">Built for schools in Kenya</p></div>
+    <div class="row"><a class="btn gold" href="#/register">Register your school</a><a class="btn ghost" href="#/login">Sign in</a></div>
+    <p class="sm" style="margin-top:34px;font-size:13px;color:rgba(255,255,255,.72)">Built for schools in Kenya</p></div>
     <div class="paper" aria-hidden="true">
-      <div class="center" style="border-bottom:2px solid var(--navy);padding-bottom:8px;margin-bottom:12px"><div class="b" style="font-family:var(--serif)">Riverside Academy</div><div class="sm mut">Term 2 Report · Form 3</div></div>
-      <div class="row sm mut" style="justify-content:space-between;margin-bottom:8px"><span>Amara Otieno</span><span>Position 3 of 210</span></div>
-      ${[['Mathematics', 'A'], ['English', 'B+'], ['Chemistry', 'A-']].map(([s, g]) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line2)"><span>${s}</span><b>${g}</b></div>`).join('')}
-      <div class="sm" style="margin-top:12px;color:var(--gold-ink);font-weight:600">Overall: A- · Very good</div></div></section>
+      <div class="center" style="border-bottom:2px solid #1A237E;padding-bottom:8px;margin-bottom:12px"><div class="b" style="font-family:var(--serif)">Riverside Academy</div><div class="sm" style="color:#566083">Term 2 Report · Form 3</div></div>
+      <div class="row sm" style="justify-content:space-between;margin-bottom:8px;color:#566083"><span>Amara Otieno</span><span>Position 3 of 210</span></div>
+      ${[['Mathematics', 'A'], ['English', 'B+'], ['Chemistry', 'A-']].map(([s, g]) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #E6E9F5"><span>${s}</span><b style="color:#2E7D32">${g}</b></div>`).join('')}
+      <div class="sm" style="margin-top:12px;color:#8A6400;font-weight:600">Overall: A- · Very good</div></div></section>
   <section class="steps">${[['1', 'Tell us about your school', 'Register with your school name, location and rough student numbers.'],
     ['2', 'We review and approve', "A short check, then your school's own private workspace is created."],
     ['3', 'Add teachers and students', 'Your admin login arrives the same day. Upload your students and start entering marks.']]
@@ -26,7 +26,7 @@ export function publicHome(root) {
   <section class="grid g3" style="margin-bottom:30px">${[['Analytics for admins', 'Podium, subject champions, class comparison and who needs attention, as soon as marks are in.'],
     ['Report cards your way', 'The classic printed form or a modern on-screen card. Print a whole class or grade in one go.'],
     ['Parents in the loop', 'Parents sign in with their phone number to see results and message teachers.']]
-    .map(([h, p]) => `<div class="card"><h3>${h}</h3><p class="mut" style="margin:8px 0 0">${p}</p></div>`).join('')}</section></div>`;
+    .map(([h, p]) => `<div class="card feat"><h3>${h}</h3><p class="mut" style="margin:8px 0 0">${p}</p></div>`).join('')}</section></div>`;
   wireTheme(root);
 }
 

@@ -5,12 +5,12 @@ import { query } from './db.js';
 // server. A school with NO plan set yet (just approved, rate not agreed) gets
 // everything, so onboarding is never blocked by billing paperwork.
 export const PLANS = {
-  'Analytics':           { analytics: true, parents: false, chat: false, sms: false },
-  'Analytics + Parents': { analytics: true, parents: true,  chat: false, sms: false },
-  'Full Suite':          { analytics: true, parents: true,  chat: true,  sms: true  },
-  'Custom':              { analytics: true, parents: true,  chat: true,  sms: true  },
+  'Analytics':           { analytics: true, parents: false, chat: false, sms: false, calendar: true,  attendance: false, fees: false },
+  'Analytics + Parents': { analytics: true, parents: true,  chat: false, sms: false, calendar: true,  attendance: true,  fees: false },
+  'Full Suite':          { analytics: true, parents: true,  chat: true,  sms: true,  calendar: true,  attendance: true,  fees: true  },
+  'Custom':              { analytics: true, parents: true,  chat: true,  sms: true,  calendar: true,  attendance: true,  fees: true  },
 };
-const ALL = { analytics: true, parents: true, chat: true, sms: true };
+const ALL = { analytics: true, parents: true, chat: true, sms: true, calendar: true, attendance: true, fees: true };
 
 export function featuresForPlan(planName) {
   return planName ? (PLANS[planName] || ALL) : ALL;
