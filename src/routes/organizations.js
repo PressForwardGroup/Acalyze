@@ -44,6 +44,19 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
   if (!reg.rows[0]) return res.status(404).json({ error: 'Registration not found or already reviewed' });
   const r = reg.rows[0];
 
+  // The school admin's login is chosen by you when you approve (pre-filled with the school's own email).
+  // Checked before anything is created, so a bad or taken email leaves nothing half-made.
+  const adminEmail = String(req.body?.adminEmail ?? r.contact_email ?? '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) return res.status(400).json({ error: 'Enter the email this school will sign in with, for example office@school.org.' });
+  const taken = await query(
+    `SELECT 1 FROM admins WHERE lower(email) = $1
+     UNION SELECT 1 FROM teachers WHERE lower(email) = $1
+     UNION SELECT 1 FROM platform_admins WHERE lower(email) = $1`, [adminEmail]);
+  if (taken.rows.length) return res.status(409).json({ error: `${adminEmail} is already used by another account. Choose a different login email.` });
+  const chosen = String(req.body?.adminPassword ?? '');
+  if (chosen && chosen.length < 6) return res.status(400).json({ error: 'The password must be at least 6 characters, or leave it empty for a random one.' });
+  const adminPassword = chosen || tempPassword();
+
   let slug = slugify(r.school_name), code = codify(r.school_name);
   const slugDupe = await query(`SELECT 1 FROM organizations WHERE slug = $1`, [slug]);
   if (slugDupe.rows[0]) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
@@ -63,18 +76,6 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
     [org.rows[0].id, 'MAIN', r.location || null]
   );
 
-  // The school admin signs in with the school's own email. Only if that is missing, or already
-  // belongs to another account (login finds accounts by email), fall back to a generated address.
-  let adminEmail = `admin@${slug}.acalyze.app`;
-  const wanted = (r.contact_email || '').trim().toLowerCase();
-  if (wanted) {
-    const taken = await query(
-      `SELECT 1 FROM admins WHERE lower(email) = $1
-       UNION SELECT 1 FROM teachers WHERE lower(email) = $1
-       UNION SELECT 1 FROM platform_admins WHERE lower(email) = $1`, [wanted]);
-    if (!taken.rows.length) adminEmail = wanted;
-  }
-  const adminPassword = tempPassword();   // random per school, shown once to you to pass on
   await query(
     `INSERT INTO admins (organization_id, full_name, email, password_hash) VALUES ($1,$2,$3,$4)`,
     [org.rows[0].id, `${r.school_name} Admin`, adminEmail, await hashPassword(adminPassword)]

@@ -37,13 +37,21 @@ async function registrations(el, ctx) {
       <div class="mut sm">${esc(r.location || 'Location not given')} · ${esc(r.system_used || '—')} · about ${r.approx_students ? r.approx_students.toLocaleString() : '?'} students</div>
       <div class="sm" style="margin-top:6px">${esc(r.contact_name || '')} · <a href="mailto:${esc(r.contact_email)}">${esc(r.contact_email)}</a>${r.contact_phone ? ' · ' + esc(r.contact_phone) : ''}</div><div class="mut sm">Submitted ${fmtDate(r.submitted_at)}</div></div>
       ${tab === 'pending' ? `<div class="row"><button class="btn primary" data-ok="${r.id}">Approve & set up</button><button class="btn danger" data-no="${r.id}">Reject</button></div>` : pill(r.status, r.status === 'approved' ? 'ok' : 'bad')}</div></div>`).join('') : '<div class="card empty">Nothing here.</div>';
-    $$('[data-ok]', el).forEach((b) => (b.onclick = () => run(b, async () => {
-      const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST' });
+    $$('[data-ok]', el).forEach((b) => (b.onclick = () => {
+      const reg = list.find((x) => x.id === b.dataset.ok);
+      const form = modal(`<h3>Set up ${esc(reg.school_name)}</h3><p class="sm mut">Choose how the school's admin signs in. The email starts as the school's own; change it if you want.</p>
+        <label class="f" for="ae">Login email</label><input class="i" id="ae" type="email" value="${esc(reg.contact_email || '')}" autocomplete="off">
+        <label class="f" for="ap" style="margin-top:12px">Password</label><input class="i" id="ap" type="text" placeholder="Type one (6+ characters), or leave empty for a random one" autocomplete="off">
+        <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Approve &amp; set up</button></div>`);
+      $('#go', form.el).onclick = (e) => run(e.currentTarget, async () => {
+      const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST', body: { adminEmail: $('#ae', form.el).value.trim(), adminPassword: $('#ap', form.el).value } });
+      form.close();
       const msg = `Welcome to Acalyze! Your school workspace is ready.\nSign in at ${location.origin}\nEmail: ${r.adminLogin.email}\nTemporary password: ${r.adminLogin.password}\nPlease change your password after signing in.`;
       modal(`<h3>${esc(r.organization.name)} is set up</h3>${r.emailed ? `<div class="notice ok">The sign-in details were emailed to ${esc(r.emailedTo)}.</div>` : ''}<p class="sm mut">${r.emailed ? 'You can also copy them here.' : 'Send these sign-in details to the school.'} The password is shown only once.</p><textarea class="i" readonly style="min-height:130px">${esc(msg)}</textarea>
         <div class="row" style="margin-top:14px;justify-content:space-between"><button class="btn" id="cp">Copy message</button><a class="btn primary" href="#/app/schools" data-close>Go to schools</a></div>`, { onMount: (m) => { $('#cp', m).onclick = () => copy(msg); } });
       draw(); ctx.refreshBadges();
-    })));
+      });
+    }));
     $$('[data-no]', el).forEach((b) => (b.onclick = async () => { if (await confirmBox('Reject this registration?', 'Reject')) run(b, async () => { await api(`/organizations/registrations/${b.dataset.no}/reject`, { method: 'POST' }); draw(); ctx.refreshBadges(); }); }));
   };
   el.innerHTML = `${ctx.bar('Registrations', 'Schools asking to join Acalyze')}<div class="tabs">${['pending', 'approved', 'rejected'].map((t) => `<button class="tab ${t === tab ? 'on' : ''}" data-t="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div><div id="list"></div>`;

@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { esc, $, toast, run, theme } from '../ui.js';
+import { installApp, isInstalled } from '../install.js';
 
 const nav = (extra = '') => `<nav class="pub-nav"><a class="brand" href="#/"><i></i>Acalyze</a>
   <div class="row"><button class="btn sm" id="themeBtn" aria-label="Toggle dark mode">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button>${extra}</div></nav>`;
@@ -64,8 +65,9 @@ export function loginView(root, onSignedIn) {
   <div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i" id="pw" type="password" autocomplete="current-password"><button type="button" class="btn" id="show" aria-label="Show password">Show</button></div>
   <button class="btn primary" id="go" style="width:100%;justify-content:center;margin-top:20px">Sign in</button></form>
   <p class="sm" style="margin-top:16px"><a href="#/forgot">Forgot your password?</a></p>
-  <p class="sm mut">New school? <a href="#/register">Register here</a></p></div></div>`;
+  <p class="sm mut">New school? <a href="#/register">Register here</a></p>${isInstalled() ? '' : '<p class="sm"><a href="#" id="inst">Install the app on your phone or computer</a></p>'}</div></div>`;
   wireTheme(root);
+  $('#inst', root)?.addEventListener('click', (e) => { e.preventDefault(); installApp(); });
   $('#show', root).onclick = (e) => { const p = $('#pw', root); p.type = p.type === 'password' ? 'text' : 'password'; e.currentTarget.textContent = p.type === 'password' ? 'Show' : 'Hide'; };
   $('#f', root).addEventListener('submit', (e) => {
     e.preventDefault();

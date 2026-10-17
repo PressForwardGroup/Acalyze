@@ -25,6 +25,10 @@ services:
         sync: false
       - key: SUPPORT_PHONE
         sync: false
+      - key: ANDROID_PACKAGE_NAME        # e.g. com.yourname.acalyze (see ANDROID.md)
+        sync: false
+      - key: ANDROID_SHA256              # signing-key fingerprint(s) from the app build, comma-separated
+        sync: false
       - key: APP_URL                     # e.g. https://app.acalyze.com (used in emails)
         sync: false
       - key: SEED_DEMO                   # "true" once, to create a demo school to click around in

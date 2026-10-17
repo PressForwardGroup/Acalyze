@@ -96,7 +96,17 @@ app.use('/password-requests', passwordRequestsRouter);
 // The frontend (public/index.html) is served by this same app — one service,
 // one URL, no separate static host and no CORS setup needed. API routes are
 // registered above this, so they always take priority over the static file.
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// Lets the Android app open this site full-screen (no browser bar). The two values come from the
+// app you build (see ANDROID.md); until they are set this answers with an empty list.
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const pkg = process.env.ANDROID_PACKAGE_NAME;
+  const fingerprints = (process.env.ANDROID_SHA256 || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!pkg || !fingerprints.length) return res.json([]);
+  res.json([{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: fingerprints } }]);
+});
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res, file) => { if (file.endsWith('sw.js')) res.set('Cache-Control', 'no-cache'); },   // a new version of the app is picked up straight away
+}));
 
 // Centralized error handler — keeps internal error detail out of API responses.
 app.use((err, req, res, next) => {

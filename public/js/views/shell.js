@@ -1,5 +1,6 @@
 import { api, session } from '../api.js';
 import { esc, $, $$, toast, theme } from '../ui.js';
+import { installApp, isInstalled } from '../install.js';
 
 // Navigation per role. 'sec' rows are section headings.
 const NAV = {
@@ -37,10 +38,11 @@ export async function mountShell(app, s, viewKey) {
     <nav class="nav" aria-label="Main">${items.map(([k, label, badge]) => k === 'sec' ? `<div class="sec">${esc(label)}</div>`
       : `<a href="#/app/${k}" data-k="${k}" class="${k === key ? 'on' : ''}"><span>${esc(label)}${badge?.startsWith('lock:') && features[badge.slice(5)] === false ? ' 🔒' : ''}</span><span class="badge hide" data-badge="${badge?.startsWith('lock:') ? '' : badge || ''}"></span></a>`).join('')}</nav>
     <div class="side-foot"><b>${esc(me.name || '')}</b>${esc(me.organization || me.roleLabel || '')}
-      <div class="row" style="margin-top:10px"><button class="btn sm" id="themeBtn">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button><button class="btn sm" id="pwBtn">Password</button><button class="btn sm" id="out">Sign out</button></div></div></aside>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="themeBtn">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button><button class="btn sm" id="pwBtn">Password</button><button class="btn sm" id="out">Sign out</button>${isInstalled() ? '' : '<button class="btn sm" id="instBtn">Install app</button>'}</div></div></aside>
     <div class="mainwrap"><main class="main" id="main" tabindex="-1"></main><footer class="support no-print" id="support">${supportHtml(me.support)}</footer></div></div>`;
 
   $('#themeBtn', app).onclick = (e) => { theme.toggle(); e.currentTarget.textContent = theme.isDark() ? '☀ Light' : '☾ Dark'; };
+  $('#instBtn', app)?.addEventListener('click', installApp);
   $('#out', app).onclick = () => { session.clear(); location.hash = '#/login'; };
   $('#exitAct', app)?.addEventListener('click', () => { session.restore(); location.hash = '#/app'; location.reload(); });
   $('#pwBtn', app).onclick = () => import('./account.js').then((m) => m.passwordModal());

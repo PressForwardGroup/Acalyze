@@ -1,3 +1,4 @@
+import './install.js';
 import { api, session } from './api.js';
 import { esc, $, $$, toast, theme, run } from './ui.js';
 import { publicHome, loginView, registerView, forgotView, setPasswordView } from './views/public.js';
