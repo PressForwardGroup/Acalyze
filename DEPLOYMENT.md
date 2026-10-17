@@ -2,7 +2,7 @@
 
 1. Put this folder in a GitHub repository.
 2. In Render: **New > Blueprint**, choose the repo. It reads `render.yaml` and creates the web service and a Postgres database.
-3. When asked, fill in: `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` (this is YOUR sign-in), `PAYBILL_NUMBER`, `APP_URL`.
+3. When asked, fill in: `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` (this is YOUR sign-in), `PAYBILL_NUMBER`, `SUPPORT_EMAIL` and `SUPPORT_PHONE` (shown to school admins as Acalyze support), `APP_URL`.
    Leave `SEED_DEMO` as `false` for production (set it to `true` for one deploy if you want a demo school to try).
 4. Deploy. On first start the app builds the whole database and creates your platform admin. Open the URL and sign in with your email and password.
 

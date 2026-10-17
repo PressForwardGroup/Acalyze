@@ -16,7 +16,8 @@ settingsRouter.get('/', asyncHandler(async (req, res) => {
   const rate = org.rate_per_student == null ? null : Number(org.rate_per_student);
   res.json({
     school: { name: org.name, motto: org.motto, logoUrl: org.logo_url, reportCardTemplate: org.report_card_template,
-              defaultGradingScheme: org.default_grading_scheme, code: org.org_code },
+              defaultGradingScheme: org.default_grading_scheme, code: org.org_code,
+              support: { email: org.support_email, phone: org.support_phone, note: org.support_note } },
     subscription: {
       planName: org.plan_name, features: featuresForPlan(org.plan_name), allPlans: Object.keys(PLANS), ratePerStudent: rate, billingCycle: org.billing_cycle, activeStudents: students,
       estimatedAmount: rate == null ? null : Math.round(rate * students * 100) / 100,
@@ -32,10 +33,16 @@ settingsRouter.patch('/', asyncHandler(async (req, res) => {
   const { motto, logoUrl, reportCardTemplate, defaultGradingScheme } = req.body;
   if (reportCardTemplate && !['classic', 'modern'].includes(reportCardTemplate)) return res.status(400).json({ error: 'reportCardTemplate must be "classic" or "modern"' });
   if (defaultGradingScheme && !['cbc', '844'].includes(defaultGradingScheme)) return res.status(400).json({ error: 'defaultGradingScheme must be "cbc" or "844"' });
+  // Support contact (shown to this school's parents): only changed when sent; an empty value clears it.
+  const cur = (await query(`SELECT support_email, support_phone, support_note FROM organizations WHERE id = $1`, [req.auth.organizationId])).rows[0];
+  const pick = (key, col, max) => (key in req.body ? String(req.body[key] ?? '').trim().slice(0, max) || null : cur[col]);
+  const supportEmail = pick('supportEmail', 'support_email', 200), supportPhone = pick('supportPhone', 'support_phone', 40), supportNote = pick('supportNote', 'support_note', 200);
+  if (supportEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)) return res.status(400).json({ error: 'Enter a valid support email, or leave it empty.' });
   const { rows } = await query(
     `UPDATE organizations SET motto = COALESCE($1, motto), logo_url = COALESCE($2, logo_url),
-       report_card_template = COALESCE($3, report_card_template), default_grading_scheme = COALESCE($4, default_grading_scheme)
-     WHERE id = $5 RETURNING name, motto, logo_url, report_card_template, default_grading_scheme`,
-    [motto ?? null, logoUrl ?? null, reportCardTemplate || null, defaultGradingScheme || null, req.auth.organizationId]);
+       report_card_template = COALESCE($3, report_card_template), default_grading_scheme = COALESCE($4, default_grading_scheme),
+       support_email = $6, support_phone = $7, support_note = $8
+     WHERE id = $5 RETURNING name, motto, logo_url, report_card_template, default_grading_scheme, support_email, support_phone, support_note`,
+    [motto ?? null, logoUrl ?? null, reportCardTemplate || null, defaultGradingScheme || null, req.auth.organizationId, supportEmail, supportPhone, supportNote]);
   res.json(rows[0]);
 }));

@@ -39,6 +39,10 @@ async function settings(el, ctx) {
     <div style="margin-top:16px"><label class="f">School logo (shown on the classic report card)</label>
       <div class="row"><div id="lp" style="width:64px;height:64px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden"></div>
       <input type="file" id="lf" accept="image/png,image/jpeg,image/svg+xml" class="sm"><button class="btn sm" id="lc">Remove</button></div><div class="sm mut">PNG or JPG under 200 KB works best.</div></div>
+    <div style="margin-top:18px"><label class="f">Support contact (shown to your parents at the bottom of their screen)</label>
+      <div class="form-grid"><div><label class="f" for="sph">Phone</label><input class="i" id="sph" value="${esc(school.support?.phone || '')}" placeholder="e.g. 0712 345 678"></div>
+      <div><label class="f" for="sem">Email</label><input class="i" id="sem" type="email" value="${esc(school.support?.email || '')}" placeholder="e.g. office@yourschool.ac.ke"></div>
+      <div><label class="f" for="sno">Note (optional)</label><input class="i" id="sno" value="${esc(school.support?.note || '')}" placeholder="e.g. Mon-Fri, 8am-5pm"></div></div></div>
     <button class="btn primary" id="save" style="margin-top:18px">Save settings</button></div>
   <div class="card" style="margin-top:18px"><h2>Your data</h2><p class="sm mut" style="margin:6px 0 12px">Your school's data belongs to you. Download it any time as an Excel file: students, parents, teachers, classes and subjects, plus the marks and ranked results for an exam you choose.</p>
     <div class="row"><select class="i" id="xex" style="width:auto;min-width:240px" aria-label="Exam to include"><option value="">People and classes only</option>${exams.map((e) => `<option value="${e.id}">${esc(e.name)}${e.academic_year ? ' · ' + esc(e.academic_year) : ''}</option>`).join('')}</select><button class="btn" id="xdl">Download Excel</button></div></div>`;
@@ -66,7 +70,7 @@ async function settings(el, ctx) {
     toast('Download started', 'ok');
   });
   $('#save', el).onclick = (e) => run(e.currentTarget, async () => {
-    await api('/school-settings', { method: 'PATCH', body: { motto: $('#motto', el).value.trim(), logoUrl: logo, reportCardTemplate: $('#tpl', el).value, defaultGradingScheme: $('#sch', el).value } });
+    await api('/school-settings', { method: 'PATCH', body: { motto: $('#motto', el).value.trim(), logoUrl: logo, reportCardTemplate: $('#tpl', el).value, defaultGradingScheme: $('#sch', el).value, supportPhone: $('#sph', el).value, supportEmail: $('#sem', el).value, supportNote: $('#sno', el).value } });
     toast('Settings saved', 'ok');
   });
 }

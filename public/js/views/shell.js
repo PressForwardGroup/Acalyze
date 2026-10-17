@@ -38,7 +38,7 @@ export async function mountShell(app, s, viewKey) {
       : `<a href="#/app/${k}" data-k="${k}" class="${k === key ? 'on' : ''}"><span>${esc(label)}${badge?.startsWith('lock:') && features[badge.slice(5)] === false ? ' 🔒' : ''}</span><span class="badge hide" data-badge="${badge?.startsWith('lock:') ? '' : badge || ''}"></span></a>`).join('')}</nav>
     <div class="side-foot"><b>${esc(me.name || '')}</b>${esc(me.organization || me.roleLabel || '')}
       <div class="row" style="margin-top:10px"><button class="btn sm" id="themeBtn">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button><button class="btn sm" id="pwBtn">Password</button><button class="btn sm" id="out">Sign out</button></div></div></aside>
-    <main class="main" id="main" tabindex="-1"></main></div>`;
+    <div class="mainwrap"><main class="main" id="main" tabindex="-1"></main><footer class="support no-print" id="support">${supportHtml(me.support)}</footer></div></div>`;
 
   $('#themeBtn', app).onclick = (e) => { theme.toggle(); e.currentTarget.textContent = theme.isDark() ? '☀ Light' : '☾ Dark'; };
   $('#out', app).onclick = () => { session.clear(); location.hash = '#/login'; };
@@ -62,6 +62,14 @@ export async function mountShell(app, s, viewKey) {
     await view(el, ctx);
   } catch (e) { console.error(e); el.innerHTML = `${bar('Something went wrong')}<div class="notice bad">${esc(e.message)}</div>`; }
   updateBadges(app, role, features);
+}
+
+// "Need help?" line at the bottom of the page: the school's contact for parents, Acalyze's for school admins.
+function supportHtml(s) {
+  if (!s || (!s.email && !s.phone)) return '';
+  const tel = s.phone ? `<a href="tel:${esc(String(s.phone).replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a>` : '';
+  const mail = s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : '';
+  return `<b>${esc(s.title || 'Need help?')}</b>${[tel, mail].filter(Boolean).map((x) => `<span>${x}</span>`).join('')}${s.note ? `<span class="mut">${esc(s.note)}</span>` : ''}`;
 }
 
 async function updateBadges(app, role, features) {

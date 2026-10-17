@@ -93,6 +93,9 @@ tbody tr:hover td{background:var(--surface2)}
 .side-foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid rgba(255,255,255,.12);font-size:12px;color:rgba(246,243,236,.7)}
 .side-foot b{color:#fff;display:block;font-size:13px}
 .main{padding:28px 34px 70px;min-width:0;max-width:1240px;width:100%}
+.mainwrap{min-width:0;display:flex;flex-direction:column;min-height:100vh}.mainwrap .main{flex:1}
+.support{display:flex;flex-wrap:wrap;gap:4px 16px;padding:14px 34px;border-top:1px solid var(--line);font-size:13px;color:var(--mut)}
+.support:empty{display:none}.support b{color:var(--ink)}.support a{color:inherit}
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px;flex-wrap:wrap}
 .menu-btn{display:none}
 .banner{background:var(--gold);color:#1B1405;padding:8px 14px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:500}
@@ -190,6 +193,7 @@ svg .val{fill:var(--ink);font-weight:600}
   .side.open{transform:none}
   .menu-btn{display:inline-flex}
   .main{padding:18px 16px 60px}
+  .support{padding:14px 16px}
   .hero{grid-template-columns:1fr;gap:36px}
   .chat{grid-template-columns:1fr}.chat-l{border-right:0;border-bottom:1px solid var(--line);max-height:180px}
 }
@@ -213,7 +217,7 @@ svg .val{fill:var(--ink);font-weight:600}
   @page{size:A4;margin:8mm}
   body{background:#fff!important}
   .no-print,.side,.topbar,.banner,.toast-wrap,.tabs,.menu-btn,.stripe{display:none!important}
-  .shell{display:block}.main{padding:0;max-width:none}
+  .shell{display:block}.mainwrap{min-height:0}.main{padding:0;max-width:none}
   .rc{margin:0;page-break-after:always;break-inside:avoid;width:auto;border-width:1px}
   .rcpt{margin:0;page-break-after:always;break-inside:avoid;width:auto}
   .mc{page-break-after:always;box-shadow:none;border-radius:0;max-width:none;margin:0}

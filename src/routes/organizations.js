@@ -53,9 +53,9 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
   const scheme = /cbc/i.test(r.system_used || '') && !/8-4-4/i.test(r.system_used || '') ? 'cbc' : '844';
 
   const org = await query(
-    `INSERT INTO organizations (name, slug, org_code, status, default_grading_scheme)
-     VALUES ($1,$2,$3,'active',$4) RETURNING *`,
-    [r.school_name, slug, code, scheme]
+    `INSERT INTO organizations (name, slug, org_code, status, default_grading_scheme, support_email, support_phone)
+     VALUES ($1,$2,$3,'active',$4,$5,$6) RETURNING *`,
+    [r.school_name, slug, code, scheme, (r.contact_email || '').trim().toLowerCase() || null, r.contact_phone || null]
   );
 
   const center = await query(
@@ -63,7 +63,17 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
     [org.rows[0].id, 'MAIN', r.location || null]
   );
 
-  const adminEmail = `admin@${slug}.acalyze.app`;
+  // The school admin signs in with the school's own email. Only if that is missing, or already
+  // belongs to another account (login finds accounts by email), fall back to a generated address.
+  let adminEmail = `admin@${slug}.acalyze.app`;
+  const wanted = (r.contact_email || '').trim().toLowerCase();
+  if (wanted) {
+    const taken = await query(
+      `SELECT 1 FROM admins WHERE lower(email) = $1
+       UNION SELECT 1 FROM teachers WHERE lower(email) = $1
+       UNION SELECT 1 FROM platform_admins WHERE lower(email) = $1`, [wanted]);
+    if (!taken.rows.length) adminEmail = wanted;
+  }
   const adminPassword = tempPassword();   // random per school, shown once to you to pass on
   await query(
     `INSERT INTO admins (organization_id, full_name, email, password_hash) VALUES ($1,$2,$3,$4)`,
