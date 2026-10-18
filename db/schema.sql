@@ -420,3 +420,19 @@ CREATE TABLE invoices (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_invoices_org ON invoices(organization_id);
+
+-- Website bookings (demo / meeting requests). Also in db/migrations/003_bookings.sql for existing databases.
+CREATE TABLE bookings (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  starts_at   timestamptz NOT NULL,
+  ends_at     timestamptz NOT NULL,
+  kind        text NOT NULL CHECK (kind IN ('in_person','video','phone')),
+  name        text NOT NULL,
+  school      text,
+  email       text NOT NULL,
+  phone       text,
+  message     text,
+  status      text NOT NULL DEFAULT 'new' CHECK (status IN ('new','confirmed','declined','done','cancelled')),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX bookings_one_per_slot ON bookings (starts_at) WHERE status IN ('new','confirmed');

@@ -46,7 +46,7 @@ async function registrations(el, ctx) {
       $('#go', form.el).onclick = (e) => run(e.currentTarget, async () => {
       const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST', body: { adminEmail: $('#ae', form.el).value.trim(), adminPassword: $('#ap', form.el).value } });
       form.close();
-      const msg = `Welcome to Acalyze! Your school workspace is ready.\nSign in at ${location.origin}\nEmail: ${r.adminLogin.email}\nTemporary password: ${r.adminLogin.password}\nPlease change your password after signing in.`;
+      const msg = `Welcome to Acalyze! Your school workspace is ready.\nSign in at ${location.origin}/app/\nEmail: ${r.adminLogin.email}\nTemporary password: ${r.adminLogin.password}\nPlease change your password after signing in.`;
       modal(`<h3>${esc(r.organization.name)} is set up</h3>${r.emailed ? `<div class="notice ok">The sign-in details were emailed to ${esc(r.emailedTo)}.</div>` : ''}<p class="sm mut">${r.emailed ? 'You can also copy them here.' : 'Send these sign-in details to the school.'} The password is shown only once.</p><textarea class="i" readonly style="min-height:130px">${esc(msg)}</textarea>
         <div class="row" style="margin-top:14px;justify-content:space-between"><button class="btn" id="cp">Copy message</button><a class="btn primary" href="#/app/schools" data-close>Go to schools</a></div>`, { onMount: (m) => { $('#cp', m).onclick = () => copy(msg); } });
       draw(); ctx.refreshBadges();
@@ -135,4 +135,31 @@ async function billing(el, ctx) {
   $$('[data-inv]', el).forEach((b) => (b.onclick = () => invoicesModal(by(b.dataset.inv), refresh)));
 }
 
-export const views = { overview, registrations, schools, billing, resets };
+// ---------- bookings (demo / meeting requests from the website) ----------
+const KIND = { in_person: '🤝 Face to face', video: '🎥 Google Meet', phone: '📞 Phone call' };
+const whenText = (d) => new Date(d).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' EAT';
+
+async function bookings(el, ctx) {
+  let tab = 'new';
+  const draw = async () => {
+    const list = await api(`/bookings?view=${tab}`);
+    const box = $('#list', el);
+    if (!list.length) { box.innerHTML = `<div class="card"><p class="mut" style="margin:0">${tab === 'new' ? 'No new requests right now.' : tab === 'upcoming' ? 'No confirmed meetings coming up.' : 'Nothing here yet.'}</p></div>`; return; }
+    box.innerHTML = list.map((b) => `<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div><div class="b">${esc(b.name)}${b.school ? ` <span class="mut">· ${esc(b.school)}</span>` : ''}</div>
+        <div style="margin-top:4px">${KIND[b.kind] || esc(b.kind)} · <b>${esc(whenText(b.starts_at))}</b>${tab === 'history' ? ` <span class="mut">(${esc(b.status)})</span>` : ''}</div></div>
+        <div class="row">${tab === 'new' ? `<button class="btn primary sm" data-st="confirmed" data-id="${b.id}">Confirm</button><button class="btn sm" data-st="declined" data-id="${b.id}">Decline</button>` : ''}${tab === 'upcoming' ? `<button class="btn sm" data-st="done" data-id="${b.id}">Mark done</button><button class="btn sm" data-st="cancelled" data-id="${b.id}">Cancel</button>` : ''}</div></div>
+      <p class="sm" style="margin:10px 0 0"><a href="mailto:${esc(b.email)}">${esc(b.email)}</a>${b.phone ? ` · <a href="tel:${esc(String(b.phone).replace(/[^\d+]/g, ''))}">${esc(b.phone)}</a>` : ''}</p>
+      ${b.message ? `<p class="mut" style="margin:8px 0 0">${esc(b.message)}</p>` : ''}</div>`).join('');
+    $$('[data-st]', box).forEach((btn) => (btn.onclick = () => run(btn, async () => {
+      await api(`/bookings/${btn.dataset.id}`, { method: 'PATCH', body: { status: btn.dataset.st } });
+      toast(btn.dataset.st === 'confirmed' ? 'Confirmed. The person has been emailed.' : 'Updated.', 'ok');
+      await draw(); ctx.refreshBadges();
+    })));
+  };
+  el.innerHTML = `${ctx.bar('Bookings', 'Demo and meeting requests from the website')}<div class="tabs">${[['new', 'New'], ['upcoming', 'Upcoming'], ['history', 'History']].map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-t="${k}">${l}</button>`).join('')}</div><div id="list"></div>`;
+  $$('.tab', el).forEach((b) => (b.onclick = () => { tab = b.dataset.t; $$('.tab', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+  await draw();
+}
+
+export const views = { overview, registrations, bookings, schools, billing, resets };

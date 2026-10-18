@@ -4,7 +4,7 @@ import { installApp, isInstalled } from '../install.js';
 
 // Navigation per role. 'sec' rows are section headings.
 const NAV = {
-  platform_admin: [['overview', 'Overview'], ['registrations', 'Registrations', 'regs'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
+  platform_admin: [['overview', 'Overview'], ['registrations', 'Registrations', 'regs'], ['bookings', 'Bookings', 'bookings'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
   admin: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
     ['sec', 'Set up'], ['classes', 'Classes'], ['subjects', 'Subjects'], ['teachers', 'Teachers'], ['students', 'Students'], ['exams', 'Exams'], ['marks', 'Marks upload'], ['excel', 'Import from Excel'],
     ['sec', 'People'], ['parents', 'Parents', 'lock:parents'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
@@ -64,6 +64,7 @@ export async function mountShell(app, s, viewKey) {
     await view(el, ctx);
   } catch (e) { console.error(e); el.innerHTML = `${bar('Something went wrong')}<div class="notice bad">${esc(e.message)}</div>`; }
   updateBadges(app, role, features);
+  watchBookings(app, role, features);
 }
 
 // "Need help?" line at the bottom of the page: the school's contact for parents, Acalyze's for school admins.
@@ -74,6 +75,20 @@ function supportHtml(s) {
   return `<b>${esc(s.title || 'Need help?')}</b>${[tel, mail].filter(Boolean).map((x) => `<span>${x}</span>`).join('')}${s.note ? `<span class="mut">${esc(s.note)}</span>` : ''}`;
 }
 
+// While you have Acalyze open, check for new booking requests every minute and tell you straight away.
+let bookingTimer = null, lastBookings = null;
+function watchBookings(app, role, features) {
+  clearInterval(bookingTimer);
+  if (role !== 'platform_admin') return;
+  bookingTimer = setInterval(async () => {
+    try {
+      const { n } = await api('/bookings/count');
+      if (lastBookings !== null && n > lastBookings) { toast('New booking request. Open Bookings to confirm it.', 'ok'); updateBadges(app, role, features); }
+      lastBookings = n;
+    } catch { /* offline: try again next minute */ }
+  }, 60_000);
+}
+
 async function updateBadges(app, role, features) {
   const set = (name, n) => $$(`[data-badge="${name}"]`, app).forEach((b) => { b.textContent = n; b.classList.toggle('hide', !n); });
   try {
@@ -81,8 +96,8 @@ async function updateBadges(app, role, features) {
       const [ov] = await Promise.all([api('/analytics/overview')]);
       set('approvals', ov.pending.edits); set('resets', ov.pending.passwords);
     } else if (role === 'platform_admin') {
-      const [regs, pw] = await Promise.all([api('/organizations/registrations?status=pending'), api('/password-requests')]);
-      set('regs', regs.length); set('resets', pw.length);
+      const [regs, pw, bk] = await Promise.all([api('/organizations/registrations?status=pending'), api('/password-requests'), api('/bookings/count')]);
+      set('regs', regs.length); set('resets', pw.length); set('bookings', bk.n);
     }
     if ((role === 'teacher' || role === 'parent') && features.chat !== false) {
       const u = await api('/chat/unread').catch(() => null); if (u) set('unread', u.unread);

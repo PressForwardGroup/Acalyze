@@ -1,7 +1,8 @@
 import './install.js';
+import './siteinfo.js';
 import { api, session } from './api.js';
 import { esc, $, $$, toast, theme, run } from './ui.js';
-import { publicHome, loginView, registerView, forgotView, setPasswordView } from './views/public.js';
+import { loginView, registerView, forgotView, setPasswordView } from './views/public.js';
 import { mountShell } from './views/shell.js';
 
 // Hash router: #/ (landing), #/login, #/register, #/forgot, #/app/<view>
@@ -21,7 +22,7 @@ async function route() {
   if (page === 'forgot') return forgotView(app);
   if (page === 'set-password') return setPasswordView(app, onSignedIn);
   if (s?.token && !page) { location.hash = '#/app'; return; }     // signed in: go straight to the app
-  return publicHome(app);
+  location.hash = '#/login';                                          // the website is the front page; the app opens at sign-in
 }
 
 // Called after a successful login or password set. `r` is the API response.

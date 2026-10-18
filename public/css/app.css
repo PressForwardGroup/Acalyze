@@ -223,3 +223,6 @@ svg .val{fill:var(--ink);font-weight:600}
   .mc{page-break-after:always;box-shadow:none;border-radius:0;max-width:none;margin:0}
   .card{box-shadow:none}
 }
+
+[hidden]{display:none!important}
+.pub-nav .brand,a.btn{text-decoration:none}

@@ -89,7 +89,7 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
   // Email the credentials to the school's contact if email is set up; otherwise
   // the platform admin sees them on screen (shown once) and passes them on.
   const emailed = await sendEmail(r.contact_email, 'Your Acalyze school is ready',
-    `Hello${r.contact_name ? ' ' + r.contact_name : ''},\n\n${r.school_name} has been approved on Acalyze.\n\nSign in${appUrl() ? ' at ' + appUrl() : ''}\nEmail: ${adminEmail}\nTemporary password: ${adminPassword}\n\nPlease change your password after signing in.\n\nThe Acalyze team`);
+    `Hello${r.contact_name ? ' ' + r.contact_name : ''},\n\n${r.school_name} has been approved on Acalyze.\n\nSign in${appUrl() ? ' at ' + appUrl() + '/app/' : ''}\nEmail: ${adminEmail}\nTemporary password: ${adminPassword}\n\nPlease change your password after signing in.\n\nThe Acalyze team`);
 
   res.status(201).json({
     emailed, emailedTo: emailed ? r.contact_email : null,

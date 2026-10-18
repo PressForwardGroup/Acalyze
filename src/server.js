@@ -29,6 +29,7 @@ import { editRequestsRouter } from './routes/editRequests.js';
 import { reportCardRouter } from './routes/reportCard.js';
 import { studentTransferRouter } from './routes/studentTransfer.js';
 import { passwordRequestsRouter } from './routes/passwordRequests.js';
+import { publicBookingsRouter, bookingsRouter } from './routes/bookings.js';
 import { ensureSchema } from './lib/autoMigrate.js';
 import { rateLimit } from './lib/rateLimit.js';
 
@@ -96,6 +97,10 @@ app.use('/password-requests', passwordRequestsRouter);
 // The frontend (public/index.html) is served by this same app — one service,
 // one URL, no separate static host and no CORS setup needed. API routes are
 // registered above this, so they always take priority over the static file.
+// ---- bookings from the separate website (it calls these over the internet) ----
+app.use('/public-api/bookings', rateLimit({ windowMs: 3_600_000, max: 16, message: 'Too many booking requests from this connection. Please try again later.' }));
+app.use('/public-api', publicBookingsRouter);
+app.use('/bookings', bookingsRouter);
 // Lets the Android app open this site full-screen (no browser bar). The two values come from the
 // app you build (see ANDROID.md); until they are set this answers with an empty list.
 app.get('/.well-known/assetlinks.json', (req, res) => {

@@ -13,11 +13,11 @@ You only rebuild the app when you change its name, icon, package name or web add
 ## 1. Deploy and test the installable site
 1. Push these files and let Render deploy.
 2. Open `https://YOUR-SITE/manifest.webmanifest`. You should see JSON.
-3. On an Android phone, open the site in Chrome, menu (⋮) -> **Install app** (or Add to Home screen).
+3. On an Android phone, open `https://YOUR-SITE/app/` in Chrome, menu (⋮) -> **Install app** (or Add to Home screen).
    It should open full-screen with the Acalyze icon. This already works as a phone app, before any APK.
 
 ## 2. Build the APK and AAB (no Android Studio needed)
-1. Go to **pwabuilder.com**, enter your site address, press Start.
+1. Go to **pwabuilder.com**, enter your site address **followed by `/app/`** (for example `https://yoursite.com/app/`), press Start.
 2. Choose **Package for stores -> Android**.
 3. Set:
    - **Package ID**: reverse of a domain you own, for example `com.yourcompany.acalyze`.
@@ -49,7 +49,7 @@ Send the `.apk` to the phone (WhatsApp, Drive, USB), open it, and allow "install
 3. Create the app, then upload the **.aab** to Closed testing (or Internal testing for quick checks).
 4. Fill in the listing: 512x512 icon (`public/icons/icon-512.png`), 1024x500 feature graphic, phone
    screenshots, short and full description.
-5. Required forms: **privacy policy URL** (you handle student data, so this matters), **Data safety**,
+5. Required forms: **privacy policy URL** (use `https://YOUR-WEBSITE/privacy/`; you handle student data, so this matters), **Data safety**,
    content rating, target audience (adults: parents, teachers, school staff).
 6. When Play shows **App signing**, copy its SHA-256 fingerprint and **add it to `ANDROID_SHA256`**
    (comma-separated with the first one). Without it the Play-installed app shows the browser bar.
