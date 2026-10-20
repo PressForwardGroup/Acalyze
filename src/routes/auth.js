@@ -4,14 +4,22 @@ import { hashPassword, verifyPassword, signToken, verifyToken } from '../lib/aut
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { featuresForOrg } from '../lib/plans.js';
 import { orgIsActive } from '../lib/orgStatus.js';
+import { audit } from '../lib/audit.js';
+import { passwordProblem } from '../lib/password.js';
+import { sessionRevoked, revokeSessions } from '../lib/sessions.js';
+import { permissionsFor, KIND_LABELS } from '../lib/permissions.js';
+import { financeOpenToAdmin } from '../lib/financeAccess.js';
 
 export const authRouter = Router();
 
-function claimsFrom(req, res) {
+async function claimsFrom(req, res) {
   const h = req.headers.authorization || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : null;
-  try { return verifyToken(t); }
+  let c;
+  try { c = verifyToken(t); }
   catch { res.status(401).json({ error: 'Session expired, please sign in again' }); return null; }
+  if (await sessionRevoked(c)) { res.status(401).json({ error: 'You were signed out. Please sign in again.' }); return null; }
+  return c;
 }
 
 async function blockIfSuspended(res, organizationId) {
@@ -46,13 +54,18 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     }
 
     const a = await query(
-      `SELECT a.id, a.organization_id, a.full_name, a.password_hash, o.name AS org_name
+      `SELECT a.id, a.organization_id, a.full_name, a.password_hash, a.role_kind, a.active, a.must_change_password, o.name AS org_name
        FROM admins a JOIN organizations o ON o.id = a.organization_id WHERE a.email = $1`, [email]);
     if (a.rows[0] && await verifyPassword(password, a.rows[0].password_hash)) {
       const admin = a.rows[0];
       if (await blockIfSuspended(res, admin.organization_id)) return;
-      const token = signToken({ sub: admin.id, role: 'admin', organizationId: admin.organization_id });
-      return res.json({ kind: 'admin', token, admin: { id: admin.id, name: admin.full_name, organization: admin.org_name } });
+      if (!admin.active) return res.status(403).json({ error: 'This account has been switched off. Please contact your school admin.' });
+      if (admin.must_change_password) {
+        const resetToken = signToken({ sub: admin.id, role: 'admin_reset', organizationId: admin.organization_id });
+        return res.json({ kind: admin.role_kind, needsPasswordChange: true, resetToken });
+      }
+      const token = signToken({ sub: admin.id, role: admin.role_kind, organizationId: admin.organization_id });
+      return res.json({ kind: admin.role_kind, token, admin: { id: admin.id, name: admin.full_name, organization: admin.org_name } });
     }
 
     // Individual teacher account — email + their own password.
@@ -102,12 +115,23 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 authRouter.post('/set-password', asyncHandler(async (req, res) => {
   const { resetToken, newPassword } = req.body;
   if (!resetToken || !newPassword) return res.status(400).json({ error: 'resetToken and newPassword are required' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const weak = passwordProblem(newPassword);
+  if (weak) return res.status(400).json({ error: weak });
 
   let claims;
   try { claims = verifyToken(resetToken); }
   catch { return res.status(401).json({ error: 'Session expired, please sign in again' }); }
   const hash = await hashPassword(newPassword);
+  if (claims.role === 'admin_reset') {
+    const { rows } = await query(
+      `UPDATE admins SET password_hash = $1, must_change_password = false WHERE id = $2 AND organization_id = $3 AND active
+       RETURNING id, organization_id, full_name, role_kind`, [hash, claims.sub, claims.organizationId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
+    const a = rows[0];
+    await audit({ auth: { organizationId: a.organization_id, role: a.role_kind, sub: a.id }, ip: req.ip }, { area: 'security', action: 'password.set', entity: 'staff', entityId: a.id });
+    const token = signToken({ sub: a.id, role: a.role_kind, organizationId: a.organization_id });
+    return res.json({ kind: a.role_kind, token, admin: { id: a.id, name: a.full_name } });
+  }
   if (claims.role === 'teacher_reset') {
     const { rows } = await query(
       `UPDATE teachers SET password_hash = $1, must_change_password = false WHERE id = $2
@@ -129,13 +153,14 @@ authRouter.post('/set-password', asyncHandler(async (req, res) => {
 // resulting token behaves as role 'admin' for that org only — it does not
 // retain standing access to every org the way MOHI's it_support did.
 authRouter.post('/platform/view-org', asyncHandler(async (req, res) => {
-  const c = claimsFrom(req, res); if (!c) return;
+  const c = await claimsFrom(req, res); if (!c) return;
   if (c.role !== 'platform_admin') return res.status(403).json({ error: 'Platform admin only' });
   const { organizationId } = req.body;
   if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
   const org = await query(`SELECT id, name FROM organizations WHERE id = $1`, [organizationId]);
   if (!org.rows[0]) return res.status(404).json({ error: 'Organization not found' });
   const token = signToken({ sub: c.sub, role: 'admin', organizationId, actingAsPlatformAdmin: true });
+  await audit({ auth: { organizationId, role: 'platform_admin', sub: c.sub, actingAsPlatformAdmin: true }, ip: req.ip }, { area: 'security', action: 'support.open_school', entity: 'school', entityId: organizationId });
   res.json({ token, organization: org.rows[0] });
 }));
 
@@ -144,25 +169,28 @@ authRouter.post('/platform/view-org', asyncHandler(async (req, res) => {
 const platformSupport = () => (process.env.SUPPORT_EMAIL || process.env.SUPPORT_PHONE)
   ? { title: 'Need help with Acalyze? Contact Acalyze support', email: process.env.SUPPORT_EMAIL || null, phone: process.env.SUPPORT_PHONE || null, note: null } : null;
 authRouter.get('/me', asyncHandler(async (req, res) => {
-  const c = claimsFrom(req, res); if (!c) return;
+  const c = await claimsFrom(req, res); if (!c) return;
 
   if (c.role === 'platform_admin') {
     const { rows } = await query(`SELECT full_name, email FROM platform_admins WHERE id = $1`, [c.sub]);
     if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
     return res.json({ id: c.sub, name: rows[0].full_name, email: rows[0].email, roleLabel: 'Platform Admin' });
   }
-  if (c.role === 'admin' && c.actingAsPlatformAdmin) {
-    // A platform admin opened this school to help: there is no admins row for them.
-    const org = await query(`SELECT name FROM organizations WHERE id = $1`, [c.organizationId]);
-    if (!org.rows[0]) return res.status(404).json({ error: 'School not found' });
-    return res.json({ id: c.sub, name: 'Acalyze support', organization: org.rows[0].name, roleLabel: 'School Admin', actingAsPlatformAdmin: true });
-  }
-  if (c.role === 'admin') {
+  if (['admin', 'principal', 'finance'].includes(c.role)) {
+    const features = await featuresForOrg(c.organizationId);
+    const financeSeparated = c.role === 'admin' ? !(await financeOpenToAdmin(c.organizationId)) : false;
+    if (c.actingAsPlatformAdmin) {
+      // A platform admin opened this school to help: there is no admins row for them.
+      const org = await query(`SELECT name FROM organizations WHERE id = $1`, [c.organizationId]);
+      if (!org.rows[0]) return res.status(404).json({ error: 'School not found' });
+      return res.json({ id: c.sub, name: 'Acalyze support', organization: org.rows[0].name, roleLabel: 'School Admin', actingAsPlatformAdmin: true, features, financeSeparated, permissions: permissionsFor('admin'), support: platformSupport() });
+    }
     const { rows } = await query(
-      `SELECT a.full_name, a.email, o.name AS org FROM admins a JOIN organizations o ON o.id = $2 WHERE a.id = $1`,
+      `SELECT a.full_name, a.email, a.title, a.role_kind, o.name AS org FROM admins a JOIN organizations o ON o.id = a.organization_id WHERE a.id = $1 AND a.organization_id = $2`,
       [c.sub, c.organizationId]);
     if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
-    return res.json({ id: c.sub, name: rows[0].full_name, email: rows[0].email, organization: rows[0].org, roleLabel: 'School Admin', actingAsPlatformAdmin: !!c.actingAsPlatformAdmin, support: platformSupport() });
+    const r = rows[0];
+    return res.json({ id: c.sub, name: r.full_name, email: r.email, organization: r.org, roleLabel: r.title || KIND_LABELS[r.role_kind], kind: r.role_kind, actingAsPlatformAdmin: false, features, financeSeparated, permissions: permissionsFor(r.role_kind), support: platformSupport() });
   }
   if (c.role === 'teacher') {
     const { rows } = await query(
@@ -184,16 +212,27 @@ authRouter.get('/me', asyncHandler(async (req, res) => {
 }));
 
 authRouter.post('/change-password', asyncHandler(async (req, res) => {
-  const c = claimsFrom(req, res); if (!c) return;
+  const c = await claimsFrom(req, res); if (!c) return;
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Enter your current and new password.' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  const table = { platform_admin: 'platform_admins', admin: 'admins', teacher: 'teachers', parent: 'parents' }[c.role];
+  const weak = passwordProblem(newPassword);
+  if (weak) return res.status(400).json({ error: weak });
+  const table = { platform_admin: 'platform_admins', admin: 'admins', principal: 'admins', finance: 'admins', teacher: 'teachers', parent: 'parents' }[c.role];
   if (!table) return res.status(403).json({ error: 'Not available for this account' });
   const { rows } = await query(`SELECT password_hash FROM ${table} WHERE id = $1`, [c.sub]);
   if (!rows[0]) return res.status(404).json({ error: 'Account not found' });
   if (!(await verifyPassword(currentPassword, rows[0].password_hash)))
     return res.status(401).json({ error: 'Current password is incorrect' });
   await query(`UPDATE ${table} SET password_hash = $1 WHERE id = $2`, [await hashPassword(newPassword), c.sub]);
+  await audit({ auth: c, ip: req.ip }, { area: 'security', action: 'password.change', entity: 'account', entityId: c.sub });
   res.json({ ok: true });
+}));
+
+// Cancels every other sign-in of this person (lost phone, shared computer). This device gets a fresh token and stays signed in.
+authRouter.post('/logout-everywhere', asyncHandler(async (req, res) => {
+  const c = await claimsFrom(req, res); if (!c) return;
+  await revokeSessions(c.sub);
+  const { iat, exp, ...claims } = c;
+  await audit({ auth: c, ip: req.ip }, { area: 'security', action: 'sessions.revoke_all', entity: 'account', entityId: c.sub });
+  res.json({ token: signToken(claims) });
 }));

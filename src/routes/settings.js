@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { query } from '../lib/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { featuresForPlan, PLANS } from '../lib/plans.js';
+import { featuresForOrgRow, PLANS } from '../lib/plans.js';
+import { audit } from '../lib/audit.js';
 
 export const settingsRouter = Router();
 settingsRouter.use(requireAuth, requireRole('admin'));
@@ -19,7 +20,7 @@ settingsRouter.get('/', asyncHandler(async (req, res) => {
               defaultGradingScheme: org.default_grading_scheme, code: org.org_code,
               support: { email: org.support_email, phone: org.support_phone, note: org.support_note } },
     subscription: {
-      planName: org.plan_name, features: featuresForPlan(org.plan_name), allPlans: Object.keys(PLANS), ratePerStudent: rate, billingCycle: org.billing_cycle, activeStudents: students,
+      planName: org.plan_name, features: featuresForOrgRow(org), allPlans: Object.keys(PLANS), ratePerStudent: rate, billingCycle: org.billing_cycle, activeStudents: students,
       estimatedAmount: rate == null ? null : Math.round(rate * students * 100) / 100,
       // One Paybill for the whole platform; each school uses its own code as the account number.
       payment: { paybill: process.env.PAYBILL_NUMBER || null, accountNumber: org.org_code },
@@ -44,5 +45,6 @@ settingsRouter.patch('/', asyncHandler(async (req, res) => {
        support_email = $6, support_phone = $7, support_note = $8
      WHERE id = $5 RETURNING name, motto, logo_url, report_card_template, default_grading_scheme, support_email, support_phone, support_note`,
     [motto ?? null, logoUrl ?? null, reportCardTemplate || null, defaultGradingScheme || null, req.auth.organizationId, supportEmail, supportPhone, supportNote]);
+  await audit(req, { area: 'academic', action: 'settings.update', entity: 'settings', detail: { changed: Object.keys(req.body || {}) } });
   res.json(rows[0]);
 }));

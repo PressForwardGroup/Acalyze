@@ -58,6 +58,7 @@ CREATE TABLE organizations (
   default_grading_scheme grading_scheme NOT NULL DEFAULT 'cbc',
   report_card_template  report_card_template NOT NULL DEFAULT 'classic',
   -- Pricing: set by the platform admin once agreed with the school (see Billing mockup).
+  modules               jsonb,                      -- chosen modules; NULL = follow the plan
   plan_name             text,                       -- "Analytics" | "Analytics + Parents" | "Full Suite" | "Custom"
   rate_per_student       numeric(10,2),
   billing_cycle          billing_cycle NOT NULL DEFAULT 'annual',
@@ -110,6 +111,11 @@ CREATE TABLE admins (
   full_name       text NOT NULL,
   email           text NOT NULL UNIQUE,
   password_hash   text NOT NULL,
+  -- Which kind of staff account: school admin / deputy, principal (head, owner), or finance officer.
+  role_kind       text NOT NULL DEFAULT 'admin' CHECK (role_kind IN ('admin','principal','finance')),
+  title           text,
+  active          boolean NOT NULL DEFAULT true,
+  must_change_password boolean NOT NULL DEFAULT false,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_admins_org ON admins(organization_id);
@@ -436,3 +442,41 @@ CREATE TABLE bookings (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX bookings_one_per_slot ON bookings (starts_at) WHERE status IN ('new','confirmed');
+
+-- Audit log, approvals and sign-out-everywhere. Also in db/migrations/004_roles_audit_approvals.sql for existing databases.
+CREATE TABLE audit_log (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  area            text NOT NULL,
+  action          text NOT NULL,
+  entity          text,
+  entity_id       text,
+  actor_role      text,
+  actor_id        text,
+  detail          jsonb,
+  ip              text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_audit_org_time ON audit_log (organization_id, created_at DESC);
+
+CREATE TABLE approval_requests (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id    uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  kind               text NOT NULL,
+  title              text NOT NULL,
+  amount             numeric(14,2),
+  payload            jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status             text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','cancelled')),
+  requested_by_id    text NOT NULL,
+  requested_by_role  text,
+  decided_by_id      text,
+  decided_at         timestamptz,
+  decision_note      text,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_approvals_org_status ON approval_requests (organization_id, status);
+
+CREATE TABLE session_resets (
+  user_id     text PRIMARY KEY,
+  valid_after timestamptz NOT NULL
+);

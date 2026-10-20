@@ -94,11 +94,18 @@ export async function resets(el, ctx) {
 export function passwordModal() {
   modal(`<h3>Change your password</h3><label class="f" for="a" style="margin-top:12px">Current password</label><input class="i" id="a" type="password" autocomplete="current-password">
     <label class="f" for="b" style="margin-top:12px">New password</label><input class="i" id="b" type="password" autocomplete="new-password">
-    <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save</button></div>`, {
+    <p class="sm mut" style="margin:6px 0 0">At least 8 characters, with a letter and a number.</p>
+    <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save</button></div>
+    <hr style="margin:18px 0;border:0;border-top:1px solid var(--line)"><p class="sm mut" style="margin:0 0 8px">Lost a phone, or used a shared computer?</p><button class="btn sm" id="all">Sign out of all other devices</button>`, {
     onMount: (m, close) => { $('#go', m).onclick = (e) => run(e.currentTarget, async () => {
       const a = $('#a', m).value, b = $('#b', m).value;
-      if (b.length < 6) return toast('Use at least 6 characters.', 'bad');
+      if (b.length < 8 || !/[A-Za-z]/.test(b) || !/\d/.test(b)) return toast('Use at least 8 characters, with a letter and a number.', 'bad');
       await api('/auth/change-password', { method: 'POST', body: { currentPassword: a, newPassword: b } }); close(); toast('Password changed', 'ok');
+    });
+    $('#all', m).onclick = (e) => run(e.currentTarget, async () => {
+      const r = await api('/auth/logout-everywhere', { method: 'POST' });
+      session.set({ ...session.get(), token: r.token });   // this device stays signed in
+      close(); toast('Signed out everywhere else', 'ok');
     }); } });
 }
 

@@ -144,7 +144,7 @@ async function fees(el, ctx) {
       pay(p);
     });
     $$('[data-rc]', p).forEach((b) => (b.onclick = () => run(b, () => printReceipt(b.dataset.rc))));
-    $$('[data-vd]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Void this payment? It is removed and the balance goes back up. This cannot be undone.', 'Void payment')) run(b, async () => { await api(`/fees/payments/${b.dataset.vd}`, { method: 'DELETE' }); toast('Payment voided', 'ok'); pay(p); }); }));
+    $$('[data-vd]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Void this payment? Once voided, the balance goes back up. If you are the finance officer, the principal approves it first.', 'Void payment')) run(b, async () => { const r = await api(`/fees/payments/${b.dataset.vd}`, { method: 'DELETE' }); toast(r?.pendingApproval ? r.message : 'Payment voided', 'ok'); pay(p); }); }));
   }
 
   async function items(p) {

@@ -1,4 +1,5 @@
 import { query } from './db.js';
+import { ALL_MODULES, MODULE_KEYS } from './modules.js';
 
 // What each plan unlocks. The platform admin picks a plan per school (and sets
 // its price); these rules turn that choice into real limits, enforced on the
@@ -10,15 +11,22 @@ export const PLANS = {
   'Full Suite':          { analytics: true, parents: true,  chat: true,  sms: true,  calendar: true,  attendance: true,  fees: true  },
   'Custom':              { analytics: true, parents: true,  chat: true,  sms: true,  calendar: true,  attendance: true,  fees: true  },
 };
-const ALL = { analytics: true, parents: true, chat: true, sms: true, calendar: true, attendance: true, fees: true };
+const ALL = { ...ALL_MODULES };
 
 export function featuresForPlan(planName) {
   return planName ? (PLANS[planName] || ALL) : ALL;
 }
 
+// A school whose modules were ticked by the platform admin gets exactly those; otherwise its plan decides, as before.
+export function featuresForOrgRow(org) {
+  const m = org?.modules;
+  if (m && typeof m === 'object') return Object.fromEntries(MODULE_KEYS.map((k) => [k, m[k] === true]));
+  return featuresForPlan(org?.plan_name);
+}
+
 export async function featuresForOrg(organizationId) {
-  const { rows } = await query(`SELECT plan_name FROM organizations WHERE id = $1`, [organizationId]);
-  return featuresForPlan(rows[0]?.plan_name);
+  const { rows } = await query(`SELECT plan_name, modules FROM organizations WHERE id = $1`, [organizationId]);
+  return featuresForOrgRow(rows[0]);
 }
 
 export function requireFeature(feature) {

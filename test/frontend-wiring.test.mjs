@@ -11,7 +11,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
 globalThis.sessionStorage = globalThis.localStorage;
 const root = new URL('..', import.meta.url).pathname;
 const views = path.join(root, 'public/js/views');
-const MODS = { platform_admin: 'platform.js', admin: 'admin.js', teacher: 'teacher.js', parent: 'parent.js' };
+const MODS = { platform_admin: 'platform.js', admin: 'admin.js', principal: 'principal.js', finance: 'finance.js', teacher: 'teacher.js', parent: 'parent.js' };
 
 test('every frontend module loads', async () => {
   for (const f of fs.readdirSync(views).filter((x) => x.endsWith('.js'))) await import(path.join(views, f));

@@ -30,6 +30,9 @@ import { reportCardRouter } from './routes/reportCard.js';
 import { studentTransferRouter } from './routes/studentTransfer.js';
 import { passwordRequestsRouter } from './routes/passwordRequests.js';
 import { publicBookingsRouter, bookingsRouter } from './routes/bookings.js';
+import { staffRouter } from './routes/staff.js';
+import { auditRouter } from './routes/audit.js';
+import { approvalRequestsRouter } from './routes/approvalRequests.js';
 import { ensureSchema } from './lib/autoMigrate.js';
 import { rateLimit } from './lib/rateLimit.js';
 
@@ -101,6 +104,9 @@ app.use('/password-requests', passwordRequestsRouter);
 app.use('/public-api/bookings', rateLimit({ windowMs: 3_600_000, max: 16, message: 'Too many booking requests from this connection. Please try again later.' }));
 app.use('/public-api', publicBookingsRouter);
 app.use('/bookings', bookingsRouter);
+app.use('/staff', staffRouter);
+app.use('/audit', auditRouter);
+app.use('/approval-requests', approvalRequestsRouter);
 // Lets the Android app open this site full-screen (no browser bar). The two values come from the
 // app you build (see ANDROID.md); until they are set this answers with an empty list.
 app.get('/.well-known/assetlinks.json', (req, res) => {

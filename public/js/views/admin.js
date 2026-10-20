@@ -5,6 +5,8 @@ import * as setup from './setup.js';
 import * as account from './account.js';
 import * as importer from './importer.js';
 import * as school from './school.js';
+import { staff } from './staff.js';
+import { audit } from './audit.js';
 
 const examLabel = (e) => `${e.name}${e.academic_year ? ' · ' + e.academic_year : ''}${e.is_published ? '' : ' (draft)'}`;
 const examSelect = (exams, sel, id = 'exam') => `<select class="i" id="${id}" style="min-width:230px;width:auto" aria-label="Exam">${exams.map((e) => `<option value="${e.id}" ${e.id === sel ? 'selected' : ''}>${esc(examLabel(e))}</option>`).join('')}</select>`;
@@ -150,4 +152,4 @@ async function reportcards(el, ctx) {
   await load();
 }
 
-export const views = { overview, analytics, watch, reportcards, ...setup.views, ...importer.views, ...school.views, ...account.views };
+export const views = { overview, analytics, watch, reportcards, ...setup.views, ...importer.views, ...school.views, ...account.views, staff, audit };

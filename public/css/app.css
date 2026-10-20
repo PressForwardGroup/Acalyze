@@ -226,3 +226,4 @@ svg .val{fill:var(--ink);font-weight:600}
 
 [hidden]{display:none!important}
 .pub-nav .brand,a.btn{text-decoration:none}
+.side-foot .btn{color:var(--ink)}

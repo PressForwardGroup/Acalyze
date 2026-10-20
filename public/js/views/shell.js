@@ -7,15 +7,21 @@ const NAV = {
   platform_admin: [['overview', 'Overview'], ['registrations', 'Registrations', 'regs'], ['bookings', 'Bookings', 'bookings'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
   admin: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
     ['sec', 'Set up'], ['classes', 'Classes'], ['subjects', 'Subjects'], ['teachers', 'Teachers'], ['students', 'Students'], ['exams', 'Exams'], ['marks', 'Marks upload'], ['excel', 'Import from Excel'],
-    ['sec', 'People'], ['parents', 'Parents', 'lock:parents'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
+    ['sec', 'People'], ['staff', 'Staff accounts'], ['parents', 'Parents', 'lock:parents'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
     ['sec', 'School life'], ['attendance', 'Attendance', 'lock:attendance'], ['fees', 'Fees', 'lock:fees'], ['calendar', 'Calendar', 'lock:calendar'],
-    ['sec', 'Account'], ['subscription', 'Subscription'], ['settings', 'Settings']],
+    ['sec', 'Account'], ['subscription', 'Subscription'], ['settings', 'Settings'], ['audit', 'Audit log']],
+  principal: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
+    ['sec', 'Finance'], ['fees', 'Fees & payments', 'lock:fees'], ['approvals', 'Approvals', 'approvals'],
+    ['sec', 'School'], ['staff', 'Staff accounts'], ['audit', 'Audit log']],
+  finance: [['overview', 'Overview'], ['fees', 'Fees & payments', 'lock:fees'], ['approvals', 'My requests']],
   teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class results'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
   parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
 };
 const MODULE = {
   platform_admin: () => import('./platform.js'),
   admin: () => import('./admin.js'),
+  principal: () => import('./principal.js'),
+  finance: () => import('./finance.js'),
   teacher: () => import('./teacher.js'),
   parent: () => import('./parent.js'),
 };
@@ -25,10 +31,12 @@ export async function mountShell(app, s, viewKey) {
   let me, features = { analytics: true, parents: true, chat: true }, badges = {};
   try {
     me = await api('/auth/me');
-    if (role === 'admin') { const st = await api('/school-settings'); features = st.subscription.features; }
+    if (me.features) features = me.features;
   } catch (e) { toast(e.message, 'bad'); session.clear(); location.hash = '#/login'; return; }
 
-  const items = NAV[role] || [];
+  let items = NAV[role] || [];
+  // Once the school has a principal or finance officer, money is theirs and the school admin no longer sees Fees.
+  if (role === 'admin' && me.financeSeparated) items = items.filter((i) => i[0] !== 'fees');
   const first = items.find((i) => i[0] !== 'sec')[0];
   const key = items.some((i) => i[0] === viewKey) ? viewKey : first;
   const acting = session.hasStash();
@@ -95,6 +103,8 @@ async function updateBadges(app, role, features) {
     if (role === 'admin') {
       const [ov] = await Promise.all([api('/analytics/overview')]);
       set('approvals', ov.pending.edits); set('resets', ov.pending.passwords);
+    } else if (role === 'principal') {
+      const c = await api('/approval-requests/count'); set('approvals', c.n);
     } else if (role === 'platform_admin') {
       const [regs, pw, bk] = await Promise.all([api('/organizations/registrations?status=pending'), api('/password-requests'), api('/bookings/count')]);
       set('regs', regs.length); set('resets', pw.length); set('bookings', bk.n);

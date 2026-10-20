@@ -109,7 +109,7 @@ export function setPasswordView(root, onSignedIn) {
   $('#f', root).addEventListener('submit', (e) => {
     e.preventDefault();
     const a = $('#a', root).value, b = $('#b', root).value;
-    if (a.length < 6) return toast('Use at least 6 characters.', 'bad');
+    if (a.length < 8 || !/[A-Za-z]/.test(a) || !/\d/.test(a)) return toast('Use at least 8 characters, with a letter and a number.', 'bad');
     if (a !== b) return toast("The two passwords don't match.", 'bad');
     run($('#go', root), async () => {
       const r = await api('/auth/set-password', { method: 'POST', body: { resetToken: st.resetToken, newPassword: a }, token: '' });

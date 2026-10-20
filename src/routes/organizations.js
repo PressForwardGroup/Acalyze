@@ -6,6 +6,10 @@ import { tempPassword } from '../lib/parents.js';
 import { forgetOrgStatus } from '../lib/orgStatus.js';
 import { sendEmail, appUrl } from '../lib/mail.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { audit } from '../lib/audit.js';
+import { passwordProblem } from '../lib/password.js';
+import { MODULES, normalizeModules } from '../lib/modules.js';
+import { featuresForOrgRow } from '../lib/plans.js';
 
 export const organizationsRouter = Router();
 organizationsRouter.use(requireAuth, requirePlatformAdmin);
@@ -54,7 +58,7 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
      UNION SELECT 1 FROM platform_admins WHERE lower(email) = $1`, [adminEmail]);
   if (taken.rows.length) return res.status(409).json({ error: `${adminEmail} is already used by another account. Choose a different login email.` });
   const chosen = String(req.body?.adminPassword ?? '');
-  if (chosen && chosen.length < 6) return res.status(400).json({ error: 'The password must be at least 6 characters, or leave it empty for a random one.' });
+  if (chosen && passwordProblem(chosen)) return res.status(400).json({ error: `${passwordProblem(chosen)} Or leave it empty for a random one.` });
   const adminPassword = chosen || tempPassword();
 
   let slug = slugify(r.school_name), code = codify(r.school_name);
@@ -77,10 +81,11 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
   );
 
   await query(
-    `INSERT INTO admins (organization_id, full_name, email, password_hash) VALUES ($1,$2,$3,$4)`,
+    `INSERT INTO admins (organization_id, full_name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4,true)`,
     [org.rows[0].id, `${r.school_name} Admin`, adminEmail, await hashPassword(adminPassword)]
   );
 
+  await audit(req, { area: 'platform', action: 'org.approve', organizationId: org.rows[0].id, entity: 'school', entityId: org.rows[0].id, detail: { adminEmail } });
   await query(
     `UPDATE school_registrations SET status = 'approved', reviewed_by_id = $1, reviewed_at = now(), organization_id = $2 WHERE id = $3`,
     [req.auth.sub, org.rows[0].id, r.id]
@@ -181,7 +186,24 @@ organizationsRouter.patch('/:id/plan', asyncHandler(async (req, res) => {
     [planName, ratePerStudent, billingCycle || null, req.params.id]
   );
   if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
+  await audit(req, { area: 'platform', action: 'org.plan', organizationId: rows[0].id, entity: 'school', entityId: rows[0].id, detail: { planName, ratePerStudent } });
   res.json(rows[0]);
+}));
+
+// Which modules a school has. The platform admin ticks them; null goes back to following the plan.
+organizationsRouter.get('/:id/modules', asyncHandler(async (req, res) => {
+  const org = (await query(`SELECT plan_name, modules FROM organizations WHERE id = $1`, [req.params.id])).rows[0];
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  res.json({ catalog: MODULES, custom: !!org.modules, modules: featuresForOrgRow(org) });
+}));
+
+organizationsRouter.patch('/:id/modules', asyncHandler(async (req, res) => {
+  let modules;
+  try { modules = normalizeModules(req.body?.modules); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const { rows } = await query(`UPDATE organizations SET modules = $1 WHERE id = $2 RETURNING plan_name, modules`, [modules ? JSON.stringify(modules) : null, req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
+  await audit(req, { area: 'platform', action: 'org.modules', organizationId: req.params.id, entity: 'school', entityId: req.params.id, detail: { modules } });
+  res.json({ custom: !!rows[0].modules, modules: featuresForOrgRow(rows[0]) });
 }));
 
 organizationsRouter.patch('/:id/status', asyncHandler(async (req, res) => {
@@ -190,6 +212,7 @@ organizationsRouter.patch('/:id/status', asyncHandler(async (req, res) => {
   const { rows } = await query(`UPDATE organizations SET status = $1 WHERE id = $2 RETURNING *`, [status, req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
   forgetOrgStatus(req.params.id);
+  await audit(req, { area: 'platform', action: 'org.status', organizationId: req.params.id, entity: 'school', entityId: req.params.id, detail: { status } });
   res.json(rows[0]);
 }));
 
