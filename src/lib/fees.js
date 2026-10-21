@@ -7,6 +7,18 @@ export function parseAmount(v) {
   if (!Number.isFinite(n) || n <= 0 || n > 100_000_000) return null;
   return r2(n);
 }
+// Does this charge apply to this student? (The same rule is written in SQL in feeSql.js; keep them identical.)
+//   item: { published, audience: 'all'|'day'|'boarding'|'optional', grade, grades }   student: { grade, boarding, assigned }
+export function chargeApplies(item, st) {
+  if (!item.published) return false;
+  if (item.audience === 'optional') return !!st.assigned;
+  if (item.grade && item.grade !== st.grade) return false;
+  if (item.grades?.length && !item.grades.includes(st.grade)) return false;
+  return item.audience === 'all' || item.audience === st.boarding;
+}
+// A student is "cleared" when they have charges and have paid at least all of them.
+export const isCleared = (charged, paid) => Number(charged) > 0 && Number(paid) >= Number(charged);
+
 export const balance = (charged, paid) => r2(Number(charged) - Number(paid));
 export const receiptNumber = (orgCode, seq) => `${orgCode}-${String(seq).padStart(6, '0')}`;
 

@@ -69,6 +69,7 @@ CREATE TABLE organizations (
   support_email         text,
   support_phone         text,
   support_note          text,
+  pay_instructions      text,                       -- how parents pay (shown on their fees page), e.g. Paybill and account
   created_at            timestamptz NOT NULL DEFAULT now()
 );
 
@@ -215,6 +216,7 @@ CREATE TABLE students (
   gender            text,
   enrollment_date   date NOT NULL DEFAULT current_date,
   status            text NOT NULL DEFAULT 'active',
+  boarding          text NOT NULL DEFAULT 'day' CHECK (boarding IN ('day','boarding')),   -- day scholar or boarder (fees can differ)
   kcpe_marks        int,                            -- 8-4-4 target-tracking input, optional
   UNIQUE (organization_id, school_id_number)
 );
@@ -371,8 +373,19 @@ CREATE TABLE fee_items (
   amount          numeric(12,2) NOT NULL CHECK (amount >= 0),
   academic_year   text NOT NULL,
   term            text,                                 -- null = the whole year
-  grade           text,                                 -- null = every student; else only that grade, e.g. "Form 3"
+  grade           text,                                 -- legacy single grade; null = every student
+  vote_head       text,                                 -- "Tuition", "Boarding", "Transport"... for reports
+  grades          text[],                               -- only these grades, e.g. {Grade 1,Grade 2,Grade 3}; null/empty = all grades
+  audience        text NOT NULL DEFAULT 'all' CHECK (audience IN ('all','day','boarding','optional')),   -- optional = only students assigned to it
+  due_date        date,
+  note            text,                                 -- shown to parents, e.g. "Trip to Naivasha, pay by 20 Nov"
+  published_at    timestamptz,                          -- null = draft: not charged and not visible to parents yet
   created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE student_fee_items (                        -- who takes an optional charge (transport route, lunch, trip)
+  student_id  uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  fee_item_id uuid NOT NULL REFERENCES fee_items(id) ON DELETE CASCADE,
+  PRIMARY KEY (student_id, fee_item_id)
 );
 CREATE INDEX idx_fee_items_org ON fee_items(organization_id, academic_year);
 

@@ -90,6 +90,21 @@ export function receiptHtml(d) {
     <table style="margin-top:8px">${row('Total fees for the year', kes(d.charged))}${row('Paid to date (including this)', kes(d.paidToDate))}${row('Balance', `<b>${kes(d.balanceAfter)}</b>`)}</table>
     <div class="ln" style="margin-top:22px">Received by: <span class="bl"></span> &nbsp; Signature &amp; stamp: <span class="bl"></span></div></div>`;
 }
+// A student's fee statement: charges by term, payments, balance, and how to pay. Works for the school and for parents.
+export function statementHtml(d) {
+  const s = d.school, st = d.student, row = (a, b) => `<tr><td style="width:36%"><b>${a}</b></td><td>${b}</td></tr>`;
+  const terms = [...new Set(d.items.map((i) => i.term || 'Whole year'))];
+  const charges = terms.map((t) => `<tr><td colspan="3" style="background:#f1f2f8"><b>${esc(t)}</b></td></tr>${d.items.filter((i) => (i.term || 'Whole year') === t).map((i) => `<tr><td>${esc(i.name)}${i.vote_head && i.vote_head !== i.name ? ` <span class="sm">(${esc(i.vote_head)})</span>` : ''}${i.note ? `<div class="sm">${esc(i.note)}</div>` : ''}</td><td>${i.due_date ? esc(fmtDate(i.due_date)) : ''}</td><td style="text-align:right">${kes(i.amount)}</td></tr>`).join('')}`).join('');
+  const pays = d.payments.map((p) => `<tr><td>${esc(p.receipt_no)}</td><td>${esc(fmtDate(p.paid_on))}</td><td style="text-align:right">${kes(p.amount)}</td></tr>`).join('');
+  return `<div class="rcpt">${s.logo_url ? `<img class="logo" src="${esc(s.logo_url)}" alt="">` : ''}<h2>${esc(s.name)}</h2>${s.motto ? `<div class="mo">${esc(s.motto)}</div>` : ''}
+    <div class="ti">FEE STATEMENT ${esc(d.year)}</div>
+    <table>${row('Student', `${esc(st.full_name)} <span class="sm">(Adm ${esc(st.school_id_number)}${st.class_name ? ', ' + esc(st.class_name) : ''})</span>`)}</table>
+    <table style="margin-top:8px"><tr><td><b>Charges</b></td><td><b>Due</b></td><td style="text-align:right"><b>Amount</b></td></tr>${charges || '<tr><td colspan="3">No charges yet.</td></tr>'}</table>
+    ${pays ? `<table style="margin-top:8px"><tr><td><b>Payments</b></td><td><b>Date</b></td><td style="text-align:right"><b>Amount</b></td></tr>${pays}</table>` : ''}
+    <table style="margin-top:8px">${row('Total charged', kes(d.charged))}${row('Total paid', kes(d.paid))}${row('Balance', `<b>${kes(d.balance)}</b>`)}</table>
+    ${d.instructions ? `<p style="margin-top:12px"><b>How to pay</b><br><span style="white-space:pre-line">${esc(d.instructions)}</span></p>` : ''}</div>`;
+}
+export async function printStatement(studentId, year) { printHtml(statementHtml(await api(`/fees/statement/${studentId}?year=${year}`))); }
 export async function printReceipt(id) { printHtml(receiptHtml(await api(`/fees/receipt/${id}`))); }
 
 async function fees(el, ctx) {
@@ -147,23 +162,75 @@ async function fees(el, ctx) {
     $$('[data-vd]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Void this payment? Once voided, the balance goes back up. If you are the finance officer, the principal approves it first.', 'Void payment')) run(b, async () => { const r = await api(`/fees/payments/${b.dataset.vd}`, { method: 'DELETE' }); toast(r?.pendingApproval ? r.message : 'Payment voided', 'ok'); pay(p); }); }));
   }
 
+  // ---- charges: the fee structure ----
+  const AUD = { all: 'Everyone', day: 'Day scholars only', boarding: 'Boarders only', optional: 'Chosen students only' };
+  const HEADS = ['Tuition', 'Boarding', 'Transport', 'Lunch', 'Water', 'Activity', 'Exams', 'Uniform', 'Trip', 'Development', 'Other'];
+  const appliesTo = (x) => [x.audience === 'all' ? '' : AUD[x.audience], x.grades?.length ? x.grades.join(', ') : (x.grade || '')].filter(Boolean).join(' · ') || 'Everyone';
+  const itemForm = (x = {}) => `<div class="form-grid">
+      <div><label class="f" for="nm">Name *</label><input class="i" id="nm" value="${esc(x.name || '')}" placeholder="Tuition"></div>
+      <div><label class="f" for="am">Amount (KSh) *</label><input class="i" id="am" inputmode="decimal" value="${x.amount ?? ''}"></div>
+      <div><label class="f" for="vh">Vote head</label><input class="i" id="vh" list="heads" value="${esc(x.vote_head || '')}" placeholder="e.g. Tuition"><datalist id="heads">${HEADS.map((h) => `<option value="${h}">`).join('')}</datalist></div>
+      <div><label class="f" for="tm">Term</label><select class="i" id="tm"><option value="">Whole year</option>${['Term 1', 'Term 2', 'Term 3'].map((t) => `<option ${x.term === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div><label class="f" for="au">Who pays it</label><select class="i" id="au">${Object.entries(AUD).map(([k, v]) => `<option value="${k}" ${(x.audience || 'all') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div><label class="f" for="dd">Due date</label><input class="i" id="dd" type="date" value="${esc(x.due_date || '')}"></div>
+      <div style="grid-column:1/-1"><span class="f">Grades that pay this (leave all unticked for every grade)</span><div class="row" style="flex-wrap:wrap;gap:6px 14px;margin-top:4px">${grades.map((g) => `<label class="row" style="gap:5px"><input type="checkbox" data-g="${esc(g)}" ${x.grades?.includes(g) ? 'checked' : ''}> ${esc(g)}</label>`).join('') || '<span class="mut sm">Add classes first.</span>'}</div></div>
+      <div style="grid-column:1/-1"><label class="f" for="nt">Note for parents (optional)</label><input class="i" id="nt" maxlength="300" value="${esc(x.note || '')}" placeholder="e.g. Trip to Naivasha, pay by 20 Nov"></div></div>`;
+  const readItemForm = (r) => ({ name: $('#nm', r).value, amount: $('#am', r).value, voteHead: $('#vh', r).value, term: $('#tm', r).value || null, audience: $('#au', r).value, dueDate: $('#dd', r).value, note: $('#nt', r).value, grades: $$('[data-g]:checked', r).map((c) => c.dataset.g) });
+
+  // Pick a class, tick students, save. Used for "who takes this optional charge" and "who boards".
+  function classPicker({ title, intro, tick, load, save }) {
+    modal(`<h3>${esc(title)}</h3><p class="sm mut">${esc(intro)}</p>
+      <select class="i" id="cl"><option value="">Choose a class…</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <div id="lst" style="margin-top:10px;max-height:300px;overflow:auto"></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close>Close</button><button class="btn primary" id="sv" disabled>Save</button></div>`, {
+      onMount: (m) => {
+        let cls = '';
+        $('#cl', m).onchange = async (e) => {
+          cls = e.target.value; $('#sv', m).disabled = !cls; if (!cls) { $('#lst', m).innerHTML = ''; return; }
+          const rows = await load(cls);
+          $('#lst', m).innerHTML = rows.map((s) => `<label class="row" style="gap:8px;padding:3px 0"><input type="checkbox" data-s="${s.id}" ${tick(s) ? 'checked' : ''}> ${esc(s.full_name)} <span class="mut sm">${esc(s.school_id_number)}</span></label>`).join('') || '<span class="mut">No students in this class.</span>';
+        };
+        $('#sv', m).onclick = (e) => run(e.currentTarget, async () => { await save(cls, $$('[data-s]:checked', m).map((c) => c.dataset.s)); toast('Saved', 'ok'); });
+      } });
+  }
+
   async function items(p) {
-    const it = await api(`/fees/items?year=${year}`);
-    p.innerHTML = `<div class="card"><h2 style="margin-bottom:12px">Add a charge for ${esc(year)}</h2><div class="form-grid">
-      <div><label class="f" for="nm">Name *</label><input class="i" id="nm" placeholder="Tuition"></div><div><label class="f" for="am">Amount (KSh) *</label><input class="i" id="am" inputmode="decimal"></div>
-      <div><label class="f" for="tm">Term</label><select class="i" id="tm"><option value="">Whole year</option><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></div>
-      <div><label class="f" for="gr">Applies to</label><select class="i" id="gr"><option value="">Every student</option>${grades.map((g) => `<option>${esc(g)}</option>`).join('')}</select></div></div>
-      <p class="sm mut">A charge for "Form 3" only counts for students in Form 3 classes. A student's balance for the year is every charge that applies to them, minus what they have paid.</p><button class="btn primary" id="add">Add charge</button></div>
-    <div class="card pad0" style="margin-top:18px">${table(['Charge', 'Applies to', 'Term', 'Amount', ''], it.items.map((x) => [`<b>${esc(x.name)}</b>`, esc(x.grade || 'Everyone'), esc(x.term || 'Whole year'), kes(x.amount), `<button class="btn sm danger" data-del="${x.id}">Delete</button>`]), { empty: `No charges for ${year} yet.` })}${it.items.length ? `<div class="card-b" style="text-align:right"><span class="mut">Total for one student who is charged everything: </span><b>${kes(it.items.filter((x) => !x.grade).reduce((n, x) => n + x.amount, 0))}</b> <span class="mut sm">(plus any grade-specific charges)</span></div>` : ''}</div>`;
-    $('#add', p).onclick = (e) => run(e.currentTarget, async () => { if (!$('#nm', p).value.trim()) return toast('Give the charge a name.', 'bad'); await api('/fees/items', { method: 'POST', body: { name: $('#nm', p).value, amount: $('#am', p).value, academicYear: year, term: $('#tm', p).value || null, grade: $('#gr', p).value || null } }); toast('Charge added', 'ok'); items(p); });
-    $$('[data-del]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Delete this charge? Balances change straight away.', 'Delete')) run(b, async () => { await api(`/fees/items/${b.dataset.del}`, { method: 'DELETE' }); items(p); }); }));
+    const it = await api(`/fees/items?year=${year}`), drafts = it.items.filter((x) => !x.published_at);
+    p.innerHTML = `${drafts.length ? `<div class="card" style="border-color:var(--warn);margin-bottom:16px"><div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap"><div><b>${drafts.length} draft charge${drafts.length === 1 ? '' : 's'}</b><div class="sm mut">Drafts are not billed and parents cannot see them. Publish when the fee structure is ready.</div></div><button class="btn primary" id="pub">Publish ${drafts.length} charge${drafts.length === 1 ? '' : 's'}</button></div></div>` : ''}
+      <div class="card"><h2 style="margin-bottom:12px">Add a charge for ${esc(year)}</h2>${itemForm()}
+        <p class="sm mut" style="margin-top:10px">A new charge starts as a draft. A student's balance for the year is every published charge that applies to them, minus what they have paid.</p><button class="btn primary" id="add">Save as draft</button></div>
+      <div class="card pad0" style="margin-top:18px">${table(['Charge', 'Applies to', 'Term', 'Due', 'Amount', 'Status', ''], it.items.map((x) => [
+        `<b>${esc(x.name)}</b>${x.vote_head ? ` <span class="mut sm">· ${esc(x.vote_head)}</span>` : ''}${x.note ? `<div class="sm mut">${esc(x.note)}</div>` : ''}`,
+        `${esc(appliesTo(x))}${x.audience === 'optional' ? `<div class="sm mut">${x.assigned} student${x.assigned === 1 ? '' : 's'}</div>` : ''}`, esc(x.term || 'Whole year'), x.due_date ? esc(fmtDate(x.due_date)) : '—', kes(x.amount),
+        x.published_at ? pill('Published', 'ok') : pill('Draft', 'warn'),
+        `<div class="row" style="gap:6px">${x.published_at ? '' : `<button class="btn sm" data-edit="${x.id}">Edit</button>`}${x.audience === 'optional' ? `<button class="btn sm" data-asg="${x.id}">Students</button>` : ''}<button class="btn sm danger" data-del="${x.id}">Delete</button></div>`]), { empty: `No charges for ${year} yet.` })}</div>
+      <div class="grid g2" style="margin-top:18px"><div class="card"><h2 style="margin-bottom:6px">Day scholars and boarders</h2><p class="sm mut">Some charges (boarding, for example) apply to boarders only. Mark who boards, class by class.</p><button class="btn" id="brd">Set boarders</button></div>
+        <div class="card"><h2 style="margin-bottom:6px">How parents pay</h2><textarea class="i" id="ins" rows="3" maxlength="600" placeholder="e.g. M-Pesa Paybill 123456, account number = your child's admission number">${esc(it.instructions || '')}</textarea><button class="btn" id="sins" style="margin-top:8px">Save instructions</button></div></div>`;
+    const said = (r, ok) => toast(r?.pendingApproval ? r.message : ok, 'ok');
+    $('#add', p).onclick = (e) => run(e.currentTarget, async () => {
+      const f = readItemForm(p); if (!f.name.trim()) return toast('Give the charge a name.', 'bad');
+      await api('/fees/items', { method: 'POST', body: { ...f, academicYear: year } }); toast('Saved as a draft. Publish when the structure is ready.', 'ok'); items(p);
+    });
+    $('#pub', p)?.addEventListener('click', async (e) => { if (await confirmBox(`Publish ${drafts.length} charge${drafts.length === 1 ? '' : 's'} for ${year}? They start counting in balances and parents can see them.`, 'Publish')) run(e.target, async () => { said(await api('/fees/items/publish', { method: 'POST', body: { year } }), 'Published'); items(p); }); });
+    $$('[data-edit]', p).forEach((b) => (b.onclick = () => {
+      const x = it.items.find((i) => i.id === b.dataset.edit);
+      modal(`<h3>Edit draft charge</h3>${itemForm(x)}<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="sv">Save</button></div>`, {
+        onMount: (m, close) => { $('#sv', m).onclick = (e) => run(e.currentTarget, async () => { await api(`/fees/items/${x.id}`, { method: 'PATCH', body: readItemForm(m) }); close(); toast('Saved', 'ok'); items(p); }); } });
+    }));
+    $$('[data-asg]', p).forEach((b) => (b.onclick = () => {
+      const x = it.items.find((i) => i.id === b.dataset.asg);
+      classPicker({ title: `Students taking "${x.name}"`, intro: 'Choose a class, then tick the students who take it.', tick: (s) => s.assigned, load: (c) => api(`/fees/items/${x.id}/assignments?classId=${c}`), save: (c, ids) => api(`/fees/items/${x.id}/assignments`, { method: 'PUT', body: { classId: c, studentIds: ids } }).then(() => items(p)) });
+    }));
+    $$('[data-del]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Delete this charge? Balances change straight away. A finance officer needs the principal to approve deleting a published charge.', 'Delete')) run(b, async () => { said(await api(`/fees/items/${b.dataset.del}`, { method: 'DELETE' }), 'Deleted'); items(p); }); }));
+    $('#brd', p).onclick = () => classPicker({ title: 'Who boards?', intro: 'Choose a class and tick the boarders. Everyone else in the class is a day scholar.', tick: (s) => s.boarding === 'boarding', load: (c) => api(`/fees/boarding?classId=${c}`), save: (c, ids) => api('/fees/boarding', { method: 'PUT', body: { classId: c, boardingIds: ids } }) });
+    $('#sins', p).onclick = (e) => run(e.currentTarget, async () => { await api('/fees/instructions', { method: 'PATCH', body: { text: $('#ins', p).value } }); toast('Saved. Parents see this on their fees page.', 'ok'); });
   }
 
   async function bal(p) {
     let cls = '', onlyOwing = false, data = null;
     p.innerHTML = `<div class="row" style="margin-bottom:14px"><select class="i" id="cf" style="width:auto"><option value="">All classes</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
       <label class="row" style="gap:6px"><input type="checkbox" id="ow"> Only students who owe</label><span class="grow"></span><button class="btn sm" id="csv">Download CSV</button></div><div id="tb"></div>`;
-    const paint = () => { const rows = data.rows.filter((r) => !onlyOwing || r.balance > 0); $('#tb', p).innerHTML = `<div class="card pad0">${table(['Student', 'Adm no.', 'Class', 'Charged', 'Paid', 'Balance'], rows.map((r) => [`<b>${esc(r.full_name)}</b>`, esc(r.school_id_number), esc(r.class_name || '—'), kes(r.charged), kes(r.paid), `<b style="color:${r.balance > 0 ? 'var(--bad)' : 'var(--ok)'}">${kes(r.balance)}</b>`]), { empty: 'No students match.' })}</div>`; };
+    const paint = () => { const rows = data.rows.filter((r) => !onlyOwing || r.balance > 0); $('#tb', p).innerHTML = `<div class="card pad0">${table(['Student', 'Adm no.', 'Class', 'Charged', 'Paid', 'Balance', ''], rows.map((r) => [`<b>${esc(r.full_name)}</b>`, esc(r.school_id_number), esc(r.class_name || '—'), kes(r.charged), kes(r.paid), `<b style="color:${r.balance > 0 ? 'var(--bad)' : 'var(--ok)'}">${kes(r.balance)}</b>`, `<button class="btn sm" data-stm="${r.student_id}">Statement</button>`]), { empty: 'No students match.' })}</div>`; $$('[data-stm]', p).forEach((b) => (b.onclick = () => run(b, () => printStatement(b.dataset.stm, year)))); };
     const load = async () => { data = await api(`/fees/balances?year=${year}${cls ? `&classId=${cls}` : ''}`); paint(); };
     $('#cf', p).onchange = (e) => { cls = e.target.value; load().catch((x) => toast(x.message, 'bad')); };
     $('#ow', p).onchange = (e) => { onlyOwing = e.target.checked; paint(); };

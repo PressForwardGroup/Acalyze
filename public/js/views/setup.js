@@ -105,6 +105,7 @@ function csvModal({ title, hint, path, example, extra = {}, done, showLogins }) 
 async function students(el, ctx) {
   const [list, cls, centers] = await Promise.all([api('/students'), api('/classes'), api('/centers')]);
   const clsName = Object.fromEntries(cls.map((c) => [c.id, c.name]));
+  const cleared = new Set((await api('/fees/cleared').catch(() => ({ cleared: [] }))).cleared);   // only a tag: school admins never see amounts
   let q = '', cf = '';
   const rows = () => list.filter((s) => (!cf || (cf === '-' ? !s.class_id : s.class_id === cf)) && (!q || `${s.full_name} ${s.school_id_number}`.toLowerCase().includes(q)));
   el.innerHTML = `${ctx.bar('Students', `${list.length} students`)}
@@ -120,7 +121,7 @@ async function students(el, ctx) {
   <div class="row" style="margin:18px 0 10px"><input class="i" id="q" placeholder="Search name or admission no." style="max-width:260px"><select class="i" id="cf" style="width:auto"><option value="">All classes</option><option value="-">No class</option>${opt(cls)}</select>
     <span class="grow"></span><select class="i" id="mvto" style="width:auto"><option value="">Move selected to…</option>${opt(cls)}</select><button class="btn sm danger" id="delsel">Delete selected</button></div>
   <div class="card pad0" id="tbl"></div>`;
-  const draw = () => { const r = rows(); $('#tbl', el).innerHTML = table(['<input type="checkbox" id="all" aria-label="Select all">', 'Student', 'Adm no.', 'Class', 'Parent phone'], r.slice(0, 300).map((s) => [`<input type="checkbox" data-s="${s.id}" aria-label="Select ${esc(s.full_name)}">`, `<b>${esc(s.full_name)}</b>`, esc(s.school_id_number), esc(clsName[s.class_id] || '—'), s.parents.length ? s.parents.map((p) => esc(p.phone)).join(', ') : '<span class="mut">—</span>']), { empty: 'No students match.' }) + (r.length > 300 ? `<div class="empty sm">Showing the first 300 of ${r.length}. Search to narrow down.</div>` : '');
+  const draw = () => { const r = rows(); $('#tbl', el).innerHTML = table(['<input type="checkbox" id="all" aria-label="Select all">', 'Student', 'Adm no.', 'Class', 'Parent phone'], r.slice(0, 300).map((s) => [`<input type="checkbox" data-s="${s.id}" aria-label="Select ${esc(s.full_name)}">`, `<b>${esc(s.full_name)}</b>${cleared.has(s.id) ? ' <span class="pill ok">Fees cleared</span>' : ''}`, esc(s.school_id_number), esc(clsName[s.class_id] || '—'), s.parents.length ? s.parents.map((p) => esc(p.phone)).join(', ') : '<span class="mut">—</span>']), { empty: 'No students match.' }) + (r.length > 300 ? `<div class="empty sm">Showing the first 300 of ${r.length}. Search to narrow down.</div>` : '');
     $('#all', el)?.addEventListener('change', (e) => $$('[data-s]', el).forEach((c) => (c.checked = e.target.checked))); };
   draw();
   const picked = () => $$('[data-s]:checked', el).map((c) => c.dataset.s);
