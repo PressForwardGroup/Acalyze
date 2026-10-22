@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { financeOpenToAdmin, hasPrincipal } from '../lib/financeAccess.js';
 import { audit } from '../lib/audit.js';
 import { CHARGE_APPLIES } from '../lib/feeSql.js';
+import { chargeApplies, allocatePayments, rollupBy } from '../lib/fees.js';
 import { needsApproval, requestApproval, registerApprovalHandler } from '../lib/approvals.js';
 import { requireFeature } from '../lib/plans.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
@@ -23,8 +24,13 @@ const financeGuard = (...extra) => async (req, res, next) => {
 };
 
 // When the finance officer voids a payment, the principal approves it first (if the school has a principal account).
-registerApprovalHandler('void_payment', async (row, req) => {
-  await query(`DELETE FROM fee_payments WHERE id = $1 AND organization_id = $2`, [row.payload.paymentId, row.organization_id]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A payment is never deleted: reversing it keeps the record, who asked and why, and stops it counting.
+const reversePayment = (id, org, byId, reason) => query(
+  `UPDATE fee_payments SET reversed_at = now(), reversed_by_id = $3, reversal_reason = $4 WHERE id = $1 AND organization_id = $2 AND reversed_at IS NULL`,
+  [id, org, byId, reason]);
+registerApprovalHandler('void_payment', async (row) => {
+  await reversePayment(row.payload.paymentId, row.organization_id, UUID.test(row.requested_by_id) ? row.requested_by_id : null, row.payload.reason || 'Reversed');
 });
 
 registerApprovalHandler('publish_fee_items', async (row) => {
@@ -42,7 +48,7 @@ const BALANCES = `
   SELECT s.id AS student_id, s.full_name, s.school_id_number, c.name AS class_name, c.id AS class_id,
     COALESCE((SELECT sum(fi.amount) FROM fee_items fi WHERE fi.organization_id = s.organization_id AND fi.academic_year = $2
               AND ${CHARGE_APPLIES}), 0)::float AS charged,
-    COALESCE((SELECT sum(p.amount) FROM fee_payments p WHERE p.student_id = s.id AND p.academic_year = $2), 0)::float AS paid
+    COALESCE((SELECT sum(p.amount) FROM fee_payments p WHERE p.student_id = s.id AND p.academic_year = $2 AND p.reversed_at IS NULL), 0)::float AS paid
   FROM students s LEFT JOIN classes c ON c.id = s.class_id
   WHERE s.organization_id = $1 AND s.status = 'active'`;
 
@@ -58,7 +64,6 @@ async function parentOwns(req, studentId) {
 // officer publishes, the principal approves first.) Only drafts can be edited; a published charge can be deleted and re-added.
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const AUDIENCES = ['all', 'day', 'boarding', 'optional'];
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ITEM_COLS = `fi.id, fi.name, fi.vote_head, fi.amount::float AS amount, fi.academic_year, fi.term, fi.grade, fi.grades, fi.audience,
   to_char(fi.due_date, 'YYYY-MM-DD') AS due_date, fi.note, fi.published_at,
   (SELECT count(*)::int FROM student_fee_items sf WHERE sf.fee_item_id = fi.id) AS assigned`;
@@ -198,8 +203,28 @@ feesRouter.get('/cleared', requireRole('admin', 'teacher', 'principal', 'finance
   res.json({ year, cleared: rows.map((r) => r.student_id) });
 }));
 
+// Fee report: charged, paid and owed by vote head and by term, with each student's money applied to their oldest charges first.
+feesRouter.get('/report', financeGuard(), asyncHandler(async (req, res) => {
+  const org = req.auth.organizationId, year = String(req.query.year || thisYear());
+  const [studs, items, asg, paid] = await Promise.all([
+    query(`SELECT s.id, s.boarding, c.grade FROM students s LEFT JOIN classes c ON c.id = s.class_id WHERE s.organization_id = $1 AND s.status = 'active'`, [org]),
+    query(`SELECT id, name, vote_head, amount::float AS amount, term, to_char(due_date, 'YYYY-MM-DD') AS due_date, grade, grades, audience FROM fee_items WHERE organization_id = $1 AND academic_year = $2 AND published_at IS NOT NULL`, [org, year]),
+    query(`SELECT sf.student_id, sf.fee_item_id FROM student_fee_items sf JOIN fee_items fi ON fi.id = sf.fee_item_id WHERE fi.organization_id = $1 AND fi.academic_year = $2`, [org, year]),
+    query(`SELECT student_id, sum(amount)::float AS paid FROM fee_payments WHERE organization_id = $1 AND academic_year = $2 AND reversed_at IS NULL GROUP BY student_id`, [org, year]),
+  ]);
+  const taken = new Set(asg.rows.map((a) => `${a.student_id}:${a.fee_item_id}`)), paidBy = new Map(paid.rows.map((p) => [p.student_id, p.paid]));
+  const all = []; let credit = 0;
+  for (const s of studs.rows) {
+    const mine = items.rows.filter((i) => chargeApplies({ ...i, published: true }, { grade: s.grade, boarding: s.boarding, assigned: taken.has(`${s.id}:${i.id}`) }));
+    const { lines, credit: c } = allocatePayments(mine, paidBy.get(s.id) || 0);
+    all.push(...lines); credit += c;
+  }
+  const out = (key) => rollupBy(all, key).sort((a, b) => b.charged - a.charged);
+  res.json({ year, byVoteHead: out((l) => l.vote_head || l.name), byTerm: out((l) => l.term || 'Whole year'), credit: Math.round(credit * 100) / 100 });
+}));
+
 // A student's invoice / statement: what applies to them, what they paid, what is left.
-async function buildStatement(org, studentId, year) {
+async function buildStatement(org, studentId, year, { forParent = false } = {}) {
   const st = (await query(
     `SELECT s.id, s.full_name, s.school_id_number, s.boarding, c.name AS class_name, c.grade FROM students s LEFT JOIN classes c ON c.id = s.class_id WHERE s.id = $1 AND s.organization_id = $2`,
     [studentId, org])).rows[0];
@@ -209,11 +234,12 @@ async function buildStatement(org, studentId, year) {
            FROM fee_items fi JOIN students s ON s.id = $2 AND s.organization_id = fi.organization_id LEFT JOIN classes c ON c.id = s.class_id
            WHERE fi.organization_id = $1 AND fi.academic_year = $3 AND ${CHARGE_APPLIES}
            ORDER BY fi.term NULLS FIRST, fi.due_date NULLS LAST, fi.name`, [org, studentId, year]),
-    query(`SELECT id, receipt_no, amount::float AS amount, method, to_char(paid_on, 'YYYY-MM-DD') AS paid_on FROM fee_payments WHERE student_id = $1 AND academic_year = $2 ORDER BY paid_on DESC, created_at DESC`, [studentId, year]),
+    query(`SELECT id, receipt_no, amount::float AS amount, method, to_char(paid_on, 'YYYY-MM-DD') AS paid_on, reversed_at, reversal_reason FROM fee_payments WHERE student_id = $1 AND academic_year = $2 ${forParent ? 'AND reversed_at IS NULL' : ''} ORDER BY paid_on DESC, created_at DESC`, [studentId, year]),
     query(`SELECT name, motto, logo_url, pay_instructions FROM organizations WHERE id = $1`, [org]),
   ]);
-  const charged = items.rows.reduce((n, i) => n + i.amount, 0), paid = pays.rows.reduce((n, p) => n + p.amount, 0);
-  return { year, student: st, school: school.rows[0], items: items.rows, payments: pays.rows, charged, paid, balance: balance(charged, paid), instructions: school.rows[0]?.pay_instructions || '' };
+  const charged = items.rows.reduce((n, i) => n + i.amount, 0), paid = pays.rows.filter((p) => !p.reversed_at).reduce((n, p) => n + p.amount, 0);
+  const { lines, credit } = allocatePayments(items.rows, paid);   // the oldest charges are paid first
+  return { year, student: st, school: school.rows[0], items: items.rows, lines, payments: pays.rows, charged, paid, balance: balance(charged, paid), credit, instructions: school.rows[0]?.pay_instructions || '' };
 }
 
 feesRouter.get('/statement/:studentId', financeGuard(), asyncHandler(async (req, res) => {
@@ -224,7 +250,7 @@ feesRouter.get('/statement/:studentId', financeGuard(), asyncHandler(async (req,
 
 feesRouter.get('/payments', financeGuard(), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT p.id, p.receipt_no, p.amount::float AS amount, p.method, p.reference, to_char(p.paid_on, 'YYYY-MM-DD') AS paid_on, p.academic_year, s.full_name, s.school_id_number
+    `SELECT p.id, p.receipt_no, p.amount::float AS amount, p.method, p.reference, to_char(p.paid_on, 'YYYY-MM-DD') AS paid_on, p.academic_year, s.full_name, s.school_id_number, p.reversed_at, p.reversal_reason
      FROM fee_payments p JOIN students s ON s.id = p.student_id WHERE p.organization_id = $1 ORDER BY p.created_at DESC LIMIT 100`, [req.auth.organizationId]);
   res.json(rows);
 }));
@@ -235,8 +261,15 @@ feesRouter.post('/payments', financeGuard(), asyncHandler(async (req, res) => {
   if (amt == null) return res.status(400).json({ error: 'Enter a valid amount.' });
   if (!METHODS.includes(method)) return res.status(400).json({ error: 'Choose how it was paid.' });
   if (paidOn && !validDay(paidOn)) return res.status(400).json({ error: 'That payment date is not valid.' });
+  if (paidOn && paidOn > new Date(Date.now() + 36e5 * 14).toISOString().slice(0, 10)) return res.status(400).json({ error: 'A payment cannot be dated in the future.' });
   const st = await query(`SELECT id FROM students WHERE id = $1 AND organization_id = $2`, [studentId, org]);
   if (!st.rows[0]) return res.status(404).json({ error: 'Student not found at your school' });
+  // An M-Pesa code is unique to one transaction. The same code twice is almost always a double entry.
+  const ref = String(reference || '').trim();
+  if (ref && method === 'mpesa' && !req.body.allowDuplicate) {
+    const dup = (await query(`SELECT receipt_no FROM fee_payments WHERE organization_id = $1 AND lower(reference) = lower($2) AND reversed_at IS NULL LIMIT 1`, [org, ref])).rows[0];
+    if (dup) return res.status(409).json({ error: `The same reference was already recorded on receipt ${dup.receipt_no}.`, duplicate: true });
+  }
   const code = (await query(`SELECT org_code FROM organizations WHERE id = $1`, [org])).rows[0].org_code;
   const { rows } = await query(
     `INSERT INTO fee_payments (organization_id, student_id, academic_year, amount, method, reference, paid_on, receipt_no, note, recorded_by_id)
@@ -247,36 +280,40 @@ feesRouter.post('/payments', financeGuard(), asyncHandler(async (req, res) => {
   res.status(201).json(rows[0]);
 }));
 
-// Void a mistaken payment. (Money records: this is deliberate and confirmed in the UI.)
-feesRouter.delete('/payments/:id', financeGuard(), asyncHandler(async (req, res) => {
+// Reverse a mistaken payment. The record stays, with who reversed it and why. The finance officer asks and the principal
+// approves (if the school has a principal account); the principal acts directly.
+feesRouter.post('/payments/:id/reverse', financeGuard(), asyncHandler(async (req, res) => {
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  if (reason.length < 3) return res.status(400).json({ error: 'Say why the payment is being reversed.' });
+  const org = req.auth.organizationId;
   const p = (await query(
-    `SELECT p.id, p.receipt_no, p.amount::float AS amount, s.full_name FROM fee_payments p JOIN students s ON s.id = p.student_id WHERE p.id = $1 AND p.organization_id = $2`,
-    [req.params.id, req.auth.organizationId])).rows[0];
+    `SELECT p.id, p.receipt_no, p.amount::float AS amount, p.reversed_at, s.full_name FROM fee_payments p JOIN students s ON s.id = p.student_id WHERE p.id = $1 AND p.organization_id = $2`,
+    [req.params.id, org])).rows[0];
   if (!p) return res.status(404).json({ error: 'Payment not found' });
-  // The finance officer asks; the principal approves. The principal (or a school with no principal yet) acts directly.
-  if (req.auth.role === 'finance' && needsApproval(req.auth.role) && await hasPrincipal(req.auth.organizationId)) {
-    const ask = await requestApproval(req, { kind: 'void_payment', title: `Void receipt ${p.receipt_no} (${p.full_name})`, amount: p.amount, payload: { paymentId: p.id, receiptNo: p.receipt_no } });
+  if (p.reversed_at) return res.status(409).json({ error: 'This payment was already reversed.' });
+  if (req.auth.role === 'finance' && needsApproval(req.auth.role) && await hasPrincipal(org)) {
+    const ask = await requestApproval(req, { kind: 'void_payment', title: `Reverse receipt ${p.receipt_no} (${p.full_name})`, amount: p.amount, payload: { paymentId: p.id, receiptNo: p.receipt_no, reason } });
     return res.status(202).json({ pendingApproval: true, requestId: ask.id, message: 'Sent to the principal for approval.' });
   }
-  await query(`DELETE FROM fee_payments WHERE id = $1 AND organization_id = $2`, [req.params.id, req.auth.organizationId]);
-  await audit(req, { area: 'finance', action: 'payment.void', entity: 'payment', entityId: p.id, detail: { receipt: p.receipt_no, amount: p.amount, student: p.full_name } });
-  res.status(204).end();
+  await reversePayment(p.id, org, adminId(req), reason);
+  await audit(req, { area: 'finance', action: 'payment.reverse', entity: 'payment', entityId: p.id, detail: { receipt: p.receipt_no, amount: p.amount, student: p.full_name, note: reason } });
+  res.json({ reversed: true });
 }));
 
 // Everything needed to print a receipt. Admin: any at their school. Parent: only their own child's.
 feesRouter.get('/receipt/:id', financeGuard('parent'), asyncHandler(async (req, res) => {
   const org = req.auth.organizationId;
   const p = (await query(
-    `SELECT p.id, p.receipt_no, p.amount::float AS amount, p.method, p.reference, p.note, to_char(p.paid_on, 'YYYY-MM-DD') AS paid_on, p.academic_year, p.created_at, p.student_id,
-            s.full_name, s.school_id_number, c.name AS class_name, c.grade
-     FROM fee_payments p JOIN students s ON s.id = p.student_id LEFT JOIN classes c ON c.id = s.class_id
+    `SELECT p.id, p.receipt_no, p.amount::float AS amount, p.method, p.reference, p.note, to_char(p.paid_on, 'YYYY-MM-DD') AS paid_on, p.academic_year, p.created_at, p.student_id, p.reversed_at, p.reversal_reason,
+            s.full_name, s.school_id_number, c.name AS class_name, c.grade, rb.full_name AS received_by
+     FROM fee_payments p JOIN students s ON s.id = p.student_id LEFT JOIN classes c ON c.id = s.class_id LEFT JOIN admins rb ON rb.id = p.recorded_by_id
      WHERE p.id = $1 AND p.organization_id = $2`, [req.params.id, org])).rows[0];
   if (!p) return res.status(404).json({ error: 'Receipt not found' });
   if (req.auth.role === 'parent' && !(await parentOwns(req, p.student_id))) return res.status(403).json({ error: "You can only view your own child's receipts" });
   const [charged, paidSoFar, school] = await Promise.all([
     query(`SELECT COALESCE(sum(fi.amount), 0)::float AS n FROM fee_items fi JOIN students s ON s.id = $3 AND s.organization_id = fi.organization_id LEFT JOIN classes c ON c.id = s.class_id
            WHERE fi.organization_id = $1 AND fi.academic_year = $2 AND ${CHARGE_APPLIES}`, [org, p.academic_year, p.student_id]),
-    query(`SELECT COALESCE(sum(amount), 0)::float AS n FROM fee_payments WHERE student_id = $1 AND academic_year = $2 AND created_at <= $3`, [p.student_id, p.academic_year, p.created_at]),
+    query(`SELECT COALESCE(sum(amount), 0)::float AS n FROM fee_payments WHERE student_id = $1 AND academic_year = $2 AND created_at <= $3 AND reversed_at IS NULL`, [p.student_id, p.academic_year, p.created_at]),
     query(`SELECT name, motto, logo_url FROM organizations WHERE id = $1`, [org]),
   ]);
   res.json({ school: school.rows[0], payment: p, charged: charged.rows[0].n, paidToDate: paidSoFar.rows[0].n, balanceAfter: balance(charged.rows[0].n, paidSoFar.rows[0].n) });
@@ -286,7 +323,7 @@ feesRouter.get('/receipt/:id', financeGuard('parent'), asyncHandler(async (req, 
 feesRouter.get('/mine', requireRole('parent'), asyncHandler(async (req, res) => {
   const { studentId } = req.query, year = req.query.year || thisYear(), org = req.auth.organizationId;
   if (!(await parentOwns(req, studentId))) return res.status(403).json({ error: "You can only view your own child's fees" });
-  const d = await buildStatement(org, studentId, year);
+  const d = await buildStatement(org, studentId, year, { forParent: true });
   if (!d) return res.status(404).json({ error: 'Student not found' });
   res.json(d);
 }));

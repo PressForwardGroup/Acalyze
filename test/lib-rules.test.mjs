@@ -23,12 +23,13 @@ test('money input: positive, comma-tolerant, rounded to 2 places, and sane', () 
 });
 test('balances avoid floating-point noise', () => { assert.equal(balance(0.3, 0.1), 0.2); assert.equal(balance(1000, 1000), 0); assert.equal(balance(1000, 1200), -200); });
 test('receipt numbers carry the school code and sort correctly', () => { assert.equal(receiptNumber('RVS', 7), 'RVS-000007'); assert.equal(receiptNumber('RVS', 123456), 'RVS-123456'); });
-test('fee summary: totals, owing count, per-class rates, overpayment never makes "outstanding" negative', () => {
+test('fee summary: totals, owing count, per-class rates, an overpayment is a credit and never hides what others owe', () => {
   const s = summarizeBalances([
     { class_name: 'Form 3 West', charged: 10000, paid: 10000 }, { class_name: 'Form 3 West', charged: 10000, paid: 4000 },
     { class_name: 'Form 3 East', charged: 10000, paid: 12000 }, { class_name: null, charged: 0, paid: 0 }]);
-  assert.deepEqual([s.charged, s.collected, s.outstanding, s.studentsOwing, s.students], [30000, 26000, 4000, 1, 4]);
-  assert.equal(s.collectionRate, 86.7);
+  assert.deepEqual([s.charged, s.collected, s.outstanding, s.studentsOwing, s.students], [30000, 26000, 6000, 1, 4]);
+  assert.equal(s.credits, 2000);
+  assert.equal(s.collectionRate, 80);   // money counted towards charges: 10,000 + 4,000 + 10,000 of 30,000
   const west = s.byClass.find((c) => c.class_name === 'Form 3 West'); assert.deepEqual([west.balance, west.rate], [6000, 70]);
   assert.ok(s.byClass.some((c) => c.class_name === '(no class)'));
   assert.equal(summarizeBalances([]).collectionRate, null);

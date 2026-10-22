@@ -403,6 +403,9 @@ CREATE TABLE fee_payments (
   receipt_no      text NOT NULL,
   note            text,
   recorded_by_id  uuid REFERENCES admins(id) ON DELETE SET NULL,
+  reversed_at     timestamptz,                          -- set when a mistaken payment is reversed (never deleted)
+  reversed_by_id  uuid REFERENCES admins(id) ON DELETE SET NULL,
+  reversal_reason text,
   created_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (organization_id, receipt_no)
 );
