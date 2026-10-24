@@ -16,12 +16,14 @@ const MODS = { platform_admin: 'platform.js', admin: 'admin.js', principal: 'pri
 test('every frontend module loads', async () => {
   for (const f of fs.readdirSync(views).filter((x) => x.endsWith('.js'))) await import(path.join(views, f));
 });
-test('every navigation item has a view, for every role', async () => {
+test('every navigation item has a view, for every role (Settings is shared)', async () => {
+  assert.equal(typeof (await import(path.join(views, 'settings.js'))).views.settings, 'function');
   const src = fs.readFileSync(path.join(views, 'shell.js'), 'utf8');
-  const NAV = new Function('return ' + src.match(/const NAV = (\{[\s\S]*?\n\});/)[1])();
+  const NAV = new Function('const G = (g, items) => ({ g, items }); return ' + src.match(/const NAV = (\{[\s\S]*?\n\});/)[1])();
   for (const [role, items] of Object.entries(NAV)) {
     const m = await import(path.join(views, MODS[role]));
-    const missing = items.map((i) => i[0]).filter((k) => k !== 'sec' && typeof m.views[k] !== 'function');
+    const flat = items.flatMap((i) => (i.g ? i.items : [i]));   // drop-down groups hold their links in .items
+    const missing = flat.map((i) => i[0]).filter((k) => k !== 'sec' && typeof m.views[k] !== 'function');
     assert.deepEqual(missing, [], `${role} nav items without a view`);
   }
 });

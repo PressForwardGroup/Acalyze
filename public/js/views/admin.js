@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { esc, $, $$, num, toast, run, table, stat, pill, progress, barChart, hbarChart, donut, color, fmtDate } from '../ui.js';
+import { esc, $, $$, num, toast, run, table, stat, pill, progress, barChart, hbarChart, donut, color, fmtDate, band, bandColor, bandPill, bandTone, BAND_LABELS, recent } from '../ui.js';
 import { renderCard, cardOptions, saveCardOptions, termFromExam, printHtml, downloadPrintable, downloadPdf, PDF_LIMIT } from './reportcard.js';
 import * as setup from './setup.js';
 import * as account from './account.js';
@@ -19,14 +19,40 @@ async function overview(el, ctx) {
     ['Add students', c.students > 0, 'students'], ['Create an exam', ov.exams.length > 0, 'exams'], ['Enter or upload marks', ov.entryProgress.some((p) => p.with_marks > 0), 'marks']];
   const done = steps.filter((s) => s[1]).length;
   const prog = ov.entryProgress.filter((p) => p.students > 0);
-  el.innerHTML = `${ctx.bar(`Welcome, ${ctx.me.organization || 'your school'}`, ov.latestExam ? `Latest exam: ${ov.latestExam.name}` : 'Let’s get your school set up')}
-  <div class="grid g4 fade">${stat('Students', c.students, { tone: 'navy' })}${stat('Teachers', c.teachers, { tone: 'green' })}${stat('Classes', c.classes, { tone: 'gold' })}${stat('Needs your attention', ov.pending.edits + ov.pending.passwords, { tone: ov.pending.edits + ov.pending.passwords > 0 ? 'red' : 'navy', sub: `${ov.pending.edits} approvals · ${ov.pending.passwords} password resets` })}</div>
+  const edits = ov.pending.edits, resets = ov.pending.passwords, waiting = edits + resets;
+  const total = prog.reduce((a, p) => a + p.students, 0), withMarks = prog.reduce((a, p) => a + p.with_marks, 0);
+  const markPct = ov.latestExam && total ? (withMarks / total) * 100 : null;
+  const behind = prog.filter((p) => p.with_marks < p.students).length;
+  const latest = ov.exams.find((e) => e.id === ov.latestExam?.id);
+  // a count of things waiting: none is excellent, a few is "monitor", many is "at risk"
+  const countTone = (n) => (n === 0 ? 'b5' : n <= 4 ? 'b3' : 'b2'), countSub = (n) => (n === 0 ? 'All clear' : n <= 4 ? 'Needs monitoring' : 'At risk');
+  const first = (ctx.me.name || '').split(' ')[0] || 'there', hr = new Date().getHours();
+  const today = new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const todo = [
+    markPct != null && markPct < 100 && ['pen', 'Enter or upload marks', `${total - withMarks} students have no marks yet`, 'marks'],
+    latest && latest.is_published === false && ['doc', 'Publish results', `${latest.name} is still a draft`, 'exams'],
+    edits > 0 && ['ok', 'Approve requests', 'Mark changes are waiting for you', 'approvals', edits],
+    resets > 0 && ['lock', 'Reset passwords', 'People who cannot sign in', 'resets', resets],
+    ctx.features.attendance !== false && ['ok', 'Take the register', 'Mark who is in class today', 'attendance'],
+    ov.latestExam && ['doc', 'Print report cards', ov.latestExam.name, 'reportcards'],
+  ].filter(Boolean).slice(0, 4);
+  const NAMES = { analytics: 'Results & analytics', watch: 'Students to watch', reportcards: 'Report cards', fees: 'Fees', attendance: 'Attendance', students: 'Students' };
+  const lists = recent.list().filter((k) => NAMES[k] && (k !== 'fees' || !ctx.me.financeSeparated));
+  const reports = (lists.length ? lists : ['analytics', 'watch', 'reportcards']).slice(0, 5);
+  el.innerHTML = `${ctx.bar(`Good ${hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening'}, ${first}`, `${ctx.me.organization || 'Your school'} · ${today}`)}
+  ${waiting > 0 ? `<div class="note-bar fade"><b>${waiting} ${waiting === 1 ? 'thing is' : 'things are'} waiting</b><span class="grow mut">${edits} mark ${edits === 1 ? 'change' : 'changes'} to approve · ${resets} password ${resets === 1 ? 'reset' : 'resets'}</span><a class="btn sm primary" href="#/app/${edits ? 'approvals' : 'resets'}">Review now</a></div>` : ''}
+  ${c.students > 0 ? `<h2 class="sect">Needs attention</h2><div class="grid g3 fade">
+    ${markPct != null ? stat('Marks entered', Math.round(markPct) + '%', { tone: bandTone(markPct), sub: `${BAND_LABELS[band(markPct)]} · ${ov.latestExam.name}` }) : ''}
+    ${stat('Classes still entering marks', ov.latestExam ? `${behind} of ${prog.length}` : '—', { tone: ov.latestExam ? countTone(behind) : '', sub: ov.latestExam ? countSub(behind) : 'No exam yet' })}
+    ${stat('Approvals and resets', waiting, { tone: countTone(waiting), sub: countSub(waiting) })}</div>` : ''}
+  ${todo.length ? `<h2 class="sect">Do today</h2><div class="tiles fade">${todo.map(([ic, t, sub, k, n]) => `<a class="tile" href="#/app/${k}"><span class="ti">${ic === 'pen' ? '✎' : ic === 'doc' ? '▤' : ic === 'lock' ? '🔑' : '✓'}</span><span class="grow"><b>${esc(t)}</b><span class="sm mut">${esc(sub)}</span></span>${n ? `<span class="badge">${n}</span>` : ''}<span class="mut">›</span></a>`).join('')}</div>` : ''}
+  <h2 class="sect">School at a glance</h2><div class="grid g3 fade">${stat('Students', c.students)}${stat('Teachers', c.teachers)}${stat('Classes', c.classes)}</div>
   ${done < steps.length ? `<div class="card" style="margin-top:18px"><div class="row" style="justify-content:space-between"><h2>Getting started</h2><span class="mut sm">${done} of ${steps.length} done</span></div><div style="margin:10px 0 14px">${progress((done / steps.length) * 100)}</div>
      <div class="grid g3">${steps.map(([l, ok, k]) => `<a class="btn" style="justify-content:space-between;text-decoration:none" href="#/app/${k}"><span>${ok ? '✓ ' : ''}${esc(l)}</span><span class="mut">›</span></a>`).join('')}</div>
      ${c.students === 0 ? '<div class="notice ok" style="margin-top:14px"><b>Already have your marks in an Excel workbook?</b> <a href="#/app/excel">Import it</a> and your classes, subjects, students and marks are set up in one go.</div>' : ''}</div>` : ''}
-  ${ov.latestExam && prog.length ? `<div class="card" style="margin-top:18px"><div class="row" style="justify-content:space-between"><h2>Marks entry progress</h2><span class="mut sm">${esc(ov.latestExam.name)}</span></div>
-     <div class="grid g2" style="margin-top:14px">${prog.map((p) => { const pct = p.students ? (p.with_marks / p.students) * 100 : 0; return `<div><div class="row sm" style="justify-content:space-between;margin-bottom:5px"><span class="b">${esc(p.name)}</span><span class="mut">${p.with_marks} of ${p.students} students</span></div>${progress(pct)}</div>`; }).join('')}</div></div>` : ''}
-  ${ov.latestExam ? `<div class="row" style="margin-top:18px"><a class="btn primary" href="#/app/analytics">See results & analytics</a><a class="btn" href="#/app/reportcards">Print report cards</a></div>` : ''}`;
+  ${ov.latestExam && prog.length ? `<div class="card" style="margin-top:18px"><div class="row" style="justify-content:space-between"><h2>Marks entry by class</h2><span class="mut sm">${esc(ov.latestExam.name)}</span></div>
+     <div class="grid g2" style="margin-top:14px">${prog.map((p) => { const pct = p.students ? (p.with_marks / p.students) * 100 : 0; return `<div><div class="row sm" style="justify-content:space-between;margin-bottom:5px"><span class="b">${esc(p.name)}</span><span class="mut">${p.with_marks} of ${p.students} students</span></div><div class="bar" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%;background:${bandColor(pct)}"></i></div></div>`; }).join('')}</div></div>` : ''}
+  <h2 class="sect">Your reports</h2><div class="card pad0 fade">${reports.map((k) => `<a class="rep" href="#/app/${k}"><span><span class="star">★</span> ${esc(NAMES[k])}</span><span class="mut">›</span></a>`).join('')}</div>`;
 }
 
 // ---------- Results & analytics ----------
@@ -53,7 +79,7 @@ async function analytics(el, ctx) {
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><h2 style="margin-bottom:10px">Class comparison (mean %)</h2>${barChart(g.classes.filter((c) => c.mean != null).map((c, i) => ({ label: c.name, value: c.mean, color: color(i) })), { max: 100, unit: '%', title: 'Mean score by class' })}</div>
         <div class="card"><h2 style="margin-bottom:10px">Grade distribution</h2>${barChart(dist, { title: 'Students per overall grade' })}</div></div>
-      <div class="card" style="margin-top:16px"><h2 style="margin-bottom:10px">Subjects, strongest to weakest</h2>${hbarChart([...g.subjects].filter((s) => s.mean != null).sort((a, b) => b.mean - a.mean).map((s) => ({ label: s.name, value: s.mean })), { max: 100, unit: '%', title: 'Mean score by subject', colorFn: (it, i, ) => (it.value >= 60 ? 'var(--c3)' : it.value >= 45 ? 'var(--c2)' : 'var(--c5)') })}</div>
+      <div class="card" style="margin-top:16px"><h2 style="margin-bottom:10px">Subjects, strongest to weakest</h2>${hbarChart([...g.subjects].filter((s) => s.mean != null).sort((a, b) => b.mean - a.mean).map((s) => ({ label: s.name, value: s.mean })), { max: 100, unit: '%', title: 'Mean score by subject', colorFn: (it) => bandColor(it.value) })}</div>
       <div class="card pad0" style="margin-top:16px"><div class="card-h">Class × subject <span class="sm mut">best class per subject in gold</span></div>
         ${table(['Class', 'Mean', ...g.subjects.map((s) => esc(s.name))], g.classes.map((c) => [`<span class="b">${esc(c.name)}</span>`, c.mean != null ? num(c.mean) + '%' : '—', ...g.subjects.map((s) => `<span class="${best[s.id] === c.classId ? 'best' : ''}">${c.perSubject[s.id] != null ? num(c.perSubject[s.id]) : '—'}</span>`)]))}</div>
       <div class="grid g2" style="margin-top:16px">

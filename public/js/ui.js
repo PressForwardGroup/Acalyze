@@ -137,3 +137,24 @@ export const stat = (label, value, { accent, sub, tone } = {}) => `<div class="c
 export const table = (heads, rows, { empty = 'Nothing here yet.' } = {}) => rows.length
   ? `<div class="ov"><table><thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
   : `<div class="empty">${esc(empty)}</div>`;
+
+// ---------- Performance colour scale ----------
+// One scale for marks, attendance and fees. Change the cut-offs here and every screen follows.
+// Level 5 = excellent (blue), 4 = good (green), 3 = needs monitoring (yellow), 2 = at risk (orange), 1 = critical (red).
+export const BAND_CUTS = [80, 65, 50, 40];
+export const BAND_LABELS = { 5: 'Excellent', 4: 'Good', 3: 'Monitor', 2: 'At risk', 1: 'Critical' };
+export function band(pct) {
+  if (pct == null || Number.isNaN(+pct)) return null;
+  const v = +pct;
+  return v >= BAND_CUTS[0] ? 5 : v >= BAND_CUTS[1] ? 4 : v >= BAND_CUTS[2] ? 3 : v >= BAND_CUTS[3] ? 2 : 1;
+}
+export const bandColor = (pct) => { const b = band(pct); return b ? `var(--b${b})` : 'var(--line)'; };
+// A coloured chip with the level written out, so the colour is never the only signal.
+export const bandPill = (pct, text) => { const b = band(pct); return b ? `<span class="pill b${b}">${esc(text ?? BAND_LABELS[b])}</span>` : '<span class="mut">—</span>'; };
+export const bandTone = (pct) => { const b = band(pct); return b ? 'b' + b : ''; };
+
+// The reports a person opened lately, kept in this browser only (used for "Your reports" on the home screen).
+export const recent = {
+  add(k) { try { const l = recent.list().filter((x) => x !== k); l.unshift(k); localStorage.setItem('acalyze.recent', JSON.stringify(l.slice(0, 8))); } catch { /* storage may be blocked */ } },
+  list() { try { return JSON.parse(localStorage.getItem('acalyze.recent') || '[]'); } catch { return []; } },
+};

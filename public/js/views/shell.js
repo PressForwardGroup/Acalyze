@@ -1,30 +1,59 @@
 import { api, session } from '../api.js';
-import { esc, $, $$, toast, theme } from '../ui.js';
+import { esc, $, $$, toast, theme, initials, modal, recent } from '../ui.js';
 import { installApp, isInstalled } from '../install.js';
 
-// Navigation per role. 'sec' rows are section headings.
+// Navigation per role. A plain row is a link: [key, label, badge]. { g, items } is a drop-down group.
+// Account things (profile, theme, password, sign out) live in Settings and the avatar menu, not here.
+const G = (g, items) => ({ g, items });
 const NAV = {
-  platform_admin: [['overview', 'Overview'], ['registrations', 'Registrations', 'regs'], ['bookings', 'Bookings', 'bookings'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
-  admin: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
-    ['sec', 'Set up'], ['classes', 'Classes'], ['subjects', 'Subjects'], ['teachers', 'Teachers'], ['students', 'Students'], ['exams', 'Exams'], ['marks', 'Marks upload'], ['excel', 'Import from Excel'],
-    ['sec', 'People'], ['staff', 'Staff accounts'], ['parents', 'Parents', 'lock:parents'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets'],
-    ['sec', 'School life'], ['attendance', 'Attendance', 'lock:attendance'], ['fees', 'Fees', 'lock:fees'], ['calendar', 'Calendar', 'lock:calendar'],
-    ['sec', 'Account'], ['subscription', 'Subscription'], ['settings', 'Settings'], ['audit', 'Audit log']],
-  principal: [['overview', 'Overview'], ['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'],
-    ['sec', 'Finance'], ['fees', 'Fees & payments', 'lock:fees'], ['approvals', 'Approvals', 'approvals'],
-    ['sec', 'School'], ['staff', 'Staff accounts'], ['audit', 'Audit log']],
-  finance: [['overview', 'Overview'], ['fees', 'Fees & payments', 'lock:fees'], ['approvals', 'My requests']],
-  teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class results'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
+  platform_admin: [['overview', 'Home'], ['registrations', 'Registrations', 'regs'], ['bookings', 'Bookings', 'bookings'], ['schools', 'Schools'], ['billing', 'Billing'], ['resets', 'Password resets', 'resets']],
+  admin: [['overview', 'Home'],
+    G('Results', [['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards'], ['exams', 'Exams'], ['marks', 'Marks upload'], ['subjects', 'Subjects']]),
+    G('Students', [['students', 'Students'], ['classes', 'Classes'], ['parents', 'Parents', 'lock:parents'], ['attendance', 'Attendance', 'lock:attendance'], ['excel', 'Import from Excel']]),
+    G('Staff', [['teachers', 'Teachers'], ['staff', 'Staff accounts'], ['approvals', 'Approvals', 'approvals'], ['resets', 'Password resets', 'resets']]),
+    ['fees', 'Fees', 'lock:fees'], ['calendar', 'Calendar', 'lock:calendar']],
+  principal: [['overview', 'Home'],
+    G('Results', [['analytics', 'Results & analytics'], ['watch', 'Students to watch'], ['reportcards', 'Report cards']]),
+    ['fees', 'Fees & payments', 'lock:fees'],
+    G('Staff', [['staff', 'Staff accounts'], ['approvals', 'Approvals', 'approvals'], ['audit', 'Audit log']])],
+  finance: [['overview', 'Home'], ['fees', 'Fees & payments', 'lock:fees'], ['approvals', 'My requests']],
+  teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
   parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
 };
+const HIDDEN = { admin: [['subscription', 'Subscription'], ['audit', 'Audit log']] };      // reachable from Settings, not the menu
+const TABBAR = ['teacher', 'parent', 'finance'];                                         // few pages: bottom tabs on phones
+const REPORT_KEYS = ['analytics', 'watch', 'reportcards', 'fees', 'attendance', 'myclass', 'approvals', 'students'];
 const MODULE = {
-  platform_admin: () => import('./platform.js'),
-  admin: () => import('./admin.js'),
-  principal: () => import('./principal.js'),
-  finance: () => import('./finance.js'),
-  teacher: () => import('./teacher.js'),
-  parent: () => import('./parent.js'),
+  platform_admin: () => import('./platform.js'), admin: () => import('./admin.js'), principal: () => import('./principal.js'),
+  finance: () => import('./finance.js'), teacher: () => import('./teacher.js'), parent: () => import('./parent.js'),
 };
+
+const I = { home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>', chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', doc: '<path d="M6 2h9l5 5v15H6zM14 2v6h6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/>', ok: '<path d="M4 12l5 5L20 6"/>', chat: '<path d="M21 12a8 8 0 01-12 7l-5 1 1-4A8 8 0 1121 12z"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>', gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>', dot: '<circle cx="12" cy="12" r="3"/>' };
+const ICON = { overview: 'home', marks: 'pen', attendance: 'ok', myclass: 'chart', messages: 'chat', calendar: 'cal', results: 'doc', fees: 'cash', approvals: 'ok', billing: 'cash' };
+const svg = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${I[ICON[k]] || I.dot}</svg>`;
+
+// Short tips shown by the "? Help" button. Plain words, one idea each.
+const HELP = {
+  overview: ['The coloured cards show what needs attention first. Blue is excellent, red is critical.', 'Use "Do today" for the jobs that are waiting.', 'Your recently opened reports are listed at the bottom.'],
+  analytics: ['Pick an exam at the top to see how every class did.', 'Bars use the colour scale, so weak classes stand out at once.'],
+  watch: ['These are the students who need help first, worst at the top.', 'Orange is at risk. Red is critical.'],
+  reportcards: ['Choose the exam and class, then print or download the report cards.'],
+  students: ['Add students one by one, or bring many in with "Import from Excel".', 'Search by name or admission number.'],
+  classes: ['Each class has a grading style: 8-4-4 or CBC.'],
+  marks: ['Upload marks as a file, or let teachers type them in.'],
+  attendance: ['Take the register once a day, per class.', 'The summary shows attendance rates by class.'],
+  fees: ['Record payments, set charges and see who owes.', 'Collection rate uses the colour scale: blue is nearly everything collected.'],
+  approvals: ['When marks change after publishing, the change waits here for approval.'],
+  staff: ['Add teachers, a finance officer or a principal here.', 'Staff sign in with their email.'],
+  teachers: ['Pick which classes and subjects each teacher handles.'],
+  calendar: ['Add terms, holidays and events. Parents see them too.'],
+  messages: ['Write to a parent or teacher. New messages show a red number.'],
+  myclass: ['Your class results, ranked. Add a comment for each student.'],
+  results: ['Pick an exam to see your child’s report card and progress.'],
+  settings: ['"My account" is about you. "School" is for the whole school (admins only).'],
+};
+
+let escKey = () => {};                                                    // the Escape handler of the page that is open now
 
 export async function mountShell(app, s, viewKey) {
   const role = s.role;
@@ -34,43 +63,87 @@ export async function mountShell(app, s, viewKey) {
     if (me.features) features = me.features;
   } catch (e) { toast(e.message, 'bad'); session.clear(); location.hash = '#/login'; return; }
 
-  let items = NAV[role] || [];
+  let nav = NAV[role] || [];
+  const flat = [];                                                            // every link, with its group name
+  const walk = (list, group = '') => list.forEach((n) => (n.g ? walk(n.items, n.g) : flat.push({ k: n[0], label: n[1], badge: n[2], group })));
   // Once the school has a principal or finance officer, money is theirs and the school admin no longer sees Fees.
-  if (role === 'admin' && me.financeSeparated) items = items.filter((i) => i[0] !== 'fees');
-  const first = items.find((i) => i[0] !== 'sec')[0];
-  const key = items.some((i) => i[0] === viewKey) ? viewKey : first;
+  if (role === 'admin' && me.financeSeparated) nav = nav.filter((n) => n[0] !== 'fees');
+  walk(nav);
+  const valid = new Set([...flat.map((f) => f.k), 'settings', ...(HIDDEN[role] || []).map((h) => h[0])]);
+  const key = valid.has(viewKey) ? viewKey : flat[0].k;
   const acting = session.hasStash();
+  const lock = (b) => (b?.startsWith('lock:') && features[b.slice(5)] === false ? ' 🔒' : '');
+  const bdg = (b) => `<span class="badge hide" data-badge="${b && !b.startsWith('lock:') ? b : ''}"></span>`;
+  const link = (f, cls = '') => `<a href="#/app/${f.k}" class="${f.k === key ? 'on' : ''} ${cls}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a>`;
+
+  const links = nav.map((n) => {
+    if (!n.g) { const f = flat.find((x) => x.k === n[0]); return `<div class="tn-item"><a class="tn-btn ${f.k === key ? 'on' : ''}" href="#/app/${f.k}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a></div>`; }
+    const open = n.items.some((i) => i[0] === key);
+    return `<div class="tn-item"><button class="tn-btn ${open ? 'on' : ''}" aria-haspopup="true" aria-expanded="false">${esc(n.g)} <span class="caret">▾</span><span class="dot"></span></button><div class="tn-menu" role="menu">${n.items.map((i) => link(flat.find((x) => x.k === i[0]))).join('')}</div></div>`;
+  }).join('');
+  const sheet = nav.map((n) => (n.g ? `<div class="sh-h">${esc(n.g)}</div>${n.items.map((i) => link(flat.find((x) => x.k === i[0]))).join('')}` : link(flat.find((x) => x.k === n[0])))).join('');
+  const tabbar = TABBAR.includes(role) ? `<nav class="tabbar no-print" aria-label="Main">${flat.map((f) => `<a href="#/app/${f.k}" class="${f.k === key ? 'on' : ''}">${svg(f.k)}<span>${esc(f.label)}</span>${bdg(f.badge)}</a>`).join('')}</nav>` : '';
+  const sup = me.support || {};
 
   app.innerHTML = `${acting ? `<div class="banner no-print"><span>Viewing <b>${esc(me.organization || 'a school')}</b> as Acalyze support.</span><button class="btn sm" id="exitAct">Back to platform</button></div>` : ''}
-  <div class="shell"><aside class="side no-print" id="side"><div class="brand"><i></i>Acalyze</div>
-    <nav class="nav" aria-label="Main">${items.map(([k, label, badge]) => k === 'sec' ? `<div class="sec">${esc(label)}</div>`
-      : `<a href="#/app/${k}" data-k="${k}" class="${k === key ? 'on' : ''}"><span>${esc(label)}${badge?.startsWith('lock:') && features[badge.slice(5)] === false ? ' 🔒' : ''}</span><span class="badge hide" data-badge="${badge?.startsWith('lock:') ? '' : badge || ''}"></span></a>`).join('')}</nav>
-    <div class="side-foot"><b>${esc(me.name || '')}</b>${esc(me.organization || me.roleLabel || '')}
-      <div class="row" style="margin-top:10px"><button class="btn sm" id="themeBtn">${theme.isDark() ? '☀ Light' : '☾ Dark'}</button><button class="btn sm" id="pwBtn">Password</button><button class="btn sm" id="out">Sign out</button>${isInstalled() ? '' : '<button class="btn sm" id="instBtn">Install app</button>'}</div></div></aside>
-    <div class="mainwrap"><main class="main" id="main" tabindex="-1"></main><footer class="support no-print" id="support">${supportHtml(me.support)}</footer></div></div>`;
+  <div class="shell ${tabbar ? 'has-tabbar' : ''}"><header class="topnav no-print"><button class="tn-burger" id="burger" aria-label="Open menu">☰</button><a class="brand" href="#/app"><i></i>Acalyze</a>
+    <nav class="tn-links" aria-label="Main">${links}</nav>
+    <div class="tn-item jump"><input id="jump" class="tn-search" placeholder="Jump to…" aria-label="Jump to a page" autocomplete="off"><div class="tn-menu" id="jumpRes"></div></div>
+    <div class="tn-item right"><button class="tn-av" id="avBtn" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">${esc(initials(me.name))}</button>
+      <div class="tn-menu acct" role="menu"><div class="acct-h"><b>${esc(me.name || '')}</b><span class="mut sm">${esc([me.roleLabel, me.organization].filter(Boolean).join(' · '))}</span></div>
+        <a href="#/app/settings">Settings</a><button id="themeBtn">${theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'}</button>${isInstalled() ? '' : '<button id="instBtn">Install app</button>'}
+        ${sup.phone || sup.email ? `<div class="acct-s sm mut">${esc(sup.title || 'Need help?')} ${sup.phone ? `<a href="tel:${esc(String(sup.phone).replace(/[^\d+]/g, ''))}">${esc(sup.phone)}</a>` : ''}</div>` : ''}
+        <hr><button id="out" class="danger">Sign out</button></div></div></header>
+  <div class="sheet no-print" id="sheet">${sheet}<div class="sh-h">Account</div><a href="#/app/settings">Settings</a></div>
+  <div class="mainwrap"><main class="main" id="main" tabindex="-1"></main><footer class="support no-print" id="support">${supportHtml(me.support)}</footer></div>${tabbar}</div>`;
 
-  $('#themeBtn', app).onclick = (e) => { theme.toggle(); e.currentTarget.textContent = theme.isDark() ? '☀ Light' : '☾ Dark'; };
+  // drop-downs: click to open, click elsewhere or press Escape to close
+  const closeAll = () => $$('.tn-item.open', app).forEach((x) => { x.classList.remove('open'); $('[aria-expanded]', x)?.setAttribute('aria-expanded', 'false'); });
+  $('.shell', app).addEventListener('click', (e) => {
+    const btn = e.target.closest('.tn-btn[aria-haspopup], .tn-av');
+    if (btn) { const item = btn.closest('.tn-item'), was = item.classList.contains('open'); closeAll(); if (!was) { item.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); } return; }
+    if (e.target.closest('.tn-menu a, .tn-menu button, .sheet a')) { closeAll(); $('#sheet', app).classList.remove('open'); $('#jump', app).value = ''; return; }
+    if (!e.target.closest('.jump')) closeAll();
+  });
+  removeEventListener('keydown', escKey);
+  escKey = (e) => { if (e.key === 'Escape') { closeAll(); $('#sheet', app)?.classList.remove('open'); } };
+  addEventListener('keydown', escKey);
+  $('#burger', app).onclick = () => $('#sheet', app).classList.toggle('open');
+
+  const pool = [...flat, { k: 'settings', label: 'Settings', group: 'Account' }, ...(HIDDEN[role] || []).map((h) => ({ k: h[0], label: h[1], group: 'Settings' }))];
+  const jump = $('#jump', app), res = $('#jumpRes', app);
+  jump.oninput = () => {
+    const q = jump.value.trim().toLowerCase(), hits = q ? pool.filter((p) => p.label.toLowerCase().includes(q)).slice(0, 7) : [];
+    res.innerHTML = hits.map((p) => `<a href="#/app/${p.k}">${esc(p.label)}<span class="mut sm">${esc(p.group)}</span></a>`).join('') || (q ? '<div class="mut sm" style="padding:8px 12px">Nothing matches</div>' : '');
+    jump.closest('.tn-item').classList.toggle('open', !!q);
+  };
+  jump.onkeydown = (e) => { if (e.key === 'Enter') $('a', res)?.click(); };
+
+  $('#themeBtn', app).onclick = (e) => { theme.toggle(); e.currentTarget.textContent = theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'; };
   $('#instBtn', app)?.addEventListener('click', installApp);
   $('#out', app).onclick = () => { session.clear(); location.hash = '#/login'; };
   $('#exitAct', app)?.addEventListener('click', () => { session.restore(); location.hash = '#/app'; location.reload(); });
-  $('#pwBtn', app).onclick = () => import('./account.js').then((m) => m.passwordModal());
-  const menu = () => $('#side', app).classList.toggle('open');
-  app.addEventListener('click', (e) => { if (e.target.closest('[data-menu]')) menu(); else if (e.target.closest('.nav a')) $('#side', app).classList.remove('open'); });
 
+  const here = flat.find((f) => f.k === key) || pool.find((p) => p.k === key);
   const ctx = { me, role, features, key,
     async refreshBadges() { await updateBadges(app, role, features); },
     go(k) { location.hash = `#/app/${k}`; } };
   const el = $('#main', app);
   const viewOnly = role === 'principal' && ['analytics', 'watch', 'reportcards'].includes(viewKey);   // the principal looks, the school admin changes
-  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div class="row" style="gap:10px;align-items:flex-start"><button class="btn sm menu-btn" data-menu aria-label="Open menu">☰</button><div><h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div></div><div class="row">${viewOnly ? '' : actions}</div></div>`;
+  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div>${here?.group ? `<div class="crumbs">${esc(here.group)} <span>›</span> ${esc(here.label)}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div><div class="row">${viewOnly ? '' : actions}${HELP[key] ? '<button class="btn sm" data-help>? Help</button>' : ''}</div></div>`;
   ctx.bar = bar;
+  el.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-help]')) return;
+    modal(`<h3>Help: ${esc(here?.label || 'this page')}</h3><ul class="help-l">${HELP[key].map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${sup.phone || sup.email ? `<p class="sm mut">Still stuck? ${esc([sup.phone, sup.email].filter(Boolean).join(' · '))}</p>` : ''}<div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Got it</button></div>`);
+  });
 
   el.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const mod = await MODULE[role]();
+    const mod = key === 'settings' ? await import('./settings.js') : await MODULE[role]();
     const view = mod.views[key];
     el.classList.remove('fade'); void el.offsetWidth; el.classList.add('fade');
     await view(el, ctx);
+    if (REPORT_KEYS.includes(key)) recent.add(key);
   } catch (e) { console.error(e); el.innerHTML = `${bar('Something went wrong')}<div class="notice bad">${esc(e.message)}</div>`; }
   updateBadges(app, role, features);
   watchBookings(app, role, features);
@@ -114,4 +187,5 @@ async function updateBadges(app, role, features) {
       const u = await api('/chat/unread').catch(() => null); if (u) set('unread', u.unread);
     }
   } catch { /* badges are a nicety, never block the page */ }
+  $$('.tn-item', app).forEach((g) => g.classList.toggle('has-badge', !!$('.tn-menu .badge:not(.hide)', g)));   // a dot on a group that has something waiting
 }
