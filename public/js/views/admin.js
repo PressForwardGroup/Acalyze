@@ -5,6 +5,7 @@ import * as setup from './setup.js';
 import * as account from './account.js';
 import * as importer from './importer.js';
 import * as school from './school.js';
+import * as promotion from './promotion.js';
 import { staff } from './staff.js';
 import { audit } from './audit.js';
 
@@ -178,4 +179,4 @@ async function reportcards(el, ctx) {
   await load();
 }
 
-export const views = { overview, analytics, watch, reportcards, ...setup.views, ...importer.views, ...school.views, ...account.views, staff, audit };
+export const views = { overview, analytics, watch, reportcards, ...setup.views, ...promotion.views, ...importer.views, ...school.views, ...account.views, staff, audit };

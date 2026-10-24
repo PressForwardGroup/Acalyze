@@ -111,7 +111,7 @@ async function students(el, ctx) {
   const KEY = 'acalyze.views.students';
   const saved = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
   const keep = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* storage may be blocked */ } };
-  let f = { q: '', cls: '', st: '', exam: ov?.latestExam?.id || ex[0]?.id || '' };
+  let f = { q: '', cls: '', st: '', left: false, exam: ov?.latestExam?.id || ex[0]?.id || '' };
   const means = new Map(), loaded = new Set();
   async function loadMeans(examId) {
     if (!examId || loaded.has(examId)) return;
@@ -123,7 +123,7 @@ async function students(el, ctx) {
     loaded.add(examId);
   }
   const info = (s) => means.get(`${f.exam}|${s.id}`), lvl = (s) => band(info(s)?.mean);
-  const rows = () => list.filter((s) => (!f.cls || (f.cls === '-' ? !s.class_id : s.class_id === f.cls)) && (!f.q || `${s.full_name} ${s.school_id_number}`.toLowerCase().includes(f.q))
+  const rows = () => list.filter((s) => (f.left || s.status !== 'left') && (!f.cls || (f.cls === '-' ? !s.class_id : s.class_id === f.cls)) && (!f.q || `${s.full_name} ${s.school_id_number}`.toLowerCase().includes(f.q))
     && (!f.st || (f.st === 'none' ? !lvl(s) : String(lvl(s)) === f.st)));
   const attCell = (s) => { const a = rates[s.id]; return a?.rate != null ? `<div class="attb"><div class="bar"><i style="width:${a.rate}%;background:${bandColor(a.rate)}"></i></div><span class="sm b">${num(a.rate)}%</span></div>` : '<span class="mut">—</span>'; };
   const tr = (s) => { const i = info(s), m = i?.mean, b = band(m);
@@ -145,6 +145,7 @@ async function students(el, ctx) {
     <select class="i" id="cf" style="width:auto" aria-label="Class"><option value="">All classes</option><option value="-">No class</option>${opt(cls)}</select>
     <select class="i" id="stf" style="width:auto" aria-label="Status"><option value="">Any status</option><option value="5">Excellent</option><option value="4">Good</option><option value="3">Monitor</option><option value="2">At risk</option><option value="1">Critical</option><option value="none">No marks</option></select>
     <select class="i" id="exf" style="width:auto;max-width:230px" aria-label="Exam for marks and status">${ex.length ? opt(ex, (e) => e.id, (e) => e.name + (e.academic_year ? ' · ' + e.academic_year : ''), f.exam) : '<option value="">No exams yet</option>'}</select>
+    <label class="sm mut" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="lf"> Include students who left</label>
     <span class="grow"></span><select class="i" id="mvto" style="width:auto" aria-label="Move selected"><option value="">Move selected to…</option>${opt(cls)}</select><button class="btn sm danger" id="delsel">Delete selected</button></div>
   <div class="row" id="chips" style="gap:8px;margin:12px 0"></div>
   <div class="card pad0" id="tbl"><div class="empty">Loading marks…</div></div>`;
@@ -170,6 +171,7 @@ async function students(el, ctx) {
   $('#cf', el).onchange = (e) => { f.cls = e.target.value; draw(); };
   $('#stf', el).onchange = (e) => { f.st = e.target.value; draw(); };
   $('#exf', el).onchange = async (e) => { f.exam = e.target.value; $('#tbl', el).innerHTML = '<div class="empty">Loading marks…</div>'; await loadMeans(f.exam); draw(); };
+  $('#lf', el).onchange = (e) => { f.left = e.target.checked; draw(); };
   $('#toggleAdd', el).onclick = () => $('#addcard', el).classList.toggle('hide');
   $('#exp', el).onclick = () => {
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`, head = ['Name', 'Admission no', 'Class', 'Attendance %', 'Mean %', 'Status'];
