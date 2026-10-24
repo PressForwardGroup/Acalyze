@@ -51,3 +51,42 @@ test('summary: one student overpaying does not hide what another owes', () => {
   assert.equal(s.studentsInCredit, 1);
   assert.equal(s.collectionRate, 75);      // 10,000 + 5,000 counted towards 20,000 of charges
 });
+
+import { isCleared, overdueSummary, ageBucket, refundable } from '../src/lib/fees.js';
+
+test('waivers: a bursary covers the oldest charges first, then payments cover what is left', () => {
+  const { lines, credit } = allocatePayments(charges, 6000, 20000);   // 20,000 waived, 6,000 paid
+  assert.deepEqual(lines.map((l) => [l.name, l.waived, l.paid, l.balance]), [['Development', 2000, 0, 0], ['Tuition', 15000, 0, 0], ['Lunch', 3000, 0, 0], ['Tuition', 0, 6000, 9000]]);
+  assert.equal(credit, 0);
+  const all = allocatePayments(charges, 0, 99999);                      // a waiver can never go beyond the charges
+  assert.ok(all.lines.every((l) => l.balance === 0 && l.waived === l.amount));
+});
+
+test('waivers: roll-ups and the summary keep waived apart from paid', () => {
+  const { lines } = allocatePayments(charges, 5000, 2000);
+  const head = rollupBy(lines, (l) => l.vote_head || l.name);
+  assert.equal(head.reduce((n, h) => n + h.waived, 0), 2000);
+  assert.equal(head.reduce((n, h) => n + h.paid, 0), 5000);
+  assert.equal(summarizeBalances([{ charged: 8000, waived: 2000, paid: 5000, class_name: 'A' }]).waived, 2000);
+});
+
+test('cleared: a student whose fees were fully waived counts as cleared', () => {
+  assert.equal(isCleared(0, 0, 15000), true);
+  assert.equal(isCleared(0, 0, 0), false);
+  assert.equal(isCleared(10000, 9999, 15000), false);
+});
+
+test('ageing: only charges past their due date are overdue, and the oldest one sets the bucket', () => {
+  const lines = [{ balance: 5000, due_date: '2026-08-01' }, { balance: 3000, due_date: '2026-09-25' }, { balance: 4000, due_date: '2026-12-01' }, { balance: 2000, due_date: null }, { balance: 0, due_date: '2026-01-01' }];
+  const o = overdueSummary(lines, '2026-10-20');
+  assert.deepEqual([o.overdue, o.oldest, o.days, o.bucket], [8000, '2026-08-01', 80, 'd61_90']);
+  assert.equal(overdueSummary([{ balance: 100, due_date: '2026-12-01' }], '2026-10-20').bucket, 'current');
+  assert.deepEqual([0, 1, 30, 31, 60, 61, 90, 91].map(ageBucket), ['current', 'd1_30', 'd1_30', 'd31_60', 'd31_60', 'd61_90', 'd61_90', 'd90plus']);
+});
+
+test('refunds: only money beyond what is owed can be refunded, less refunds already asked for', () => {
+  assert.equal(refundable(10000, 15000), 5000);
+  assert.equal(refundable(10000, 15000, 2000), 3000);
+  assert.equal(refundable(10000, 8000), 0);
+  assert.equal(refundable(10000, 15000, 9999), 0);
+});

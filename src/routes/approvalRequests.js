@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { query } from '../lib/db.js';
 import { requireAuth, requirePerm } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { decide } from '../lib/approvals.js';
+import { decide, runCancelHook } from '../lib/approvals.js';
 import { audit } from '../lib/audit.js';
 
 // Requests waiting for the principal. The finance officer sees their own requests; the principal sees all.
@@ -42,9 +42,10 @@ approvalRequestsRouter.post('/:id/reject', decideRoute(false));
 approvalRequestsRouter.post('/:id/cancel', asyncHandler(async (req, res) => {
   const { rows } = await query(
     `UPDATE approval_requests SET status = 'cancelled', decided_at = now()
-     WHERE id = $1 AND organization_id = $2 AND requested_by_id = $3 AND status = 'pending' RETURNING id, kind, title`,
+     WHERE id = $1 AND organization_id = $2 AND requested_by_id = $3 AND status = 'pending' RETURNING id, kind, title, payload, organization_id`,
     [req.params.id, req.auth.organizationId, String(req.auth.sub)]);
   if (!rows.length) return res.status(404).json({ error: 'No pending request of yours found.' });
+  await runCancelHook(rows[0]);
   await audit(req, { area: 'finance', action: 'approval.cancel', entity: rows[0].kind, entityId: rows[0].id, detail: { title: rows[0].title } });
   res.json({ ok: true });
 }));

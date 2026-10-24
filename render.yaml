@@ -25,6 +25,8 @@ services:
         sync: false
       - key: SUPPORT_PHONE
         sync: false
+      - key: MPESA_SECRET_KEY            # 64 hex characters, see MPESA.md
+        sync: false
       - key: SITE_URL                    # your public website, e.g. https://www.acalyze.com
         sync: false
       - key: NOTIFY_EMAIL                # booking alerts go here

@@ -496,3 +496,73 @@ CREATE TABLE session_resets (
   user_id     text PRIMARY KEY,
   valid_after timestamptz NOT NULL
 );
+
+-- M-Pesa (also in db/migrations/007_mpesa.sql for existing databases).
+CREATE TABLE mpesa_settings (
+  organization_id     uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  env                 text NOT NULL DEFAULT 'sandbox' CHECK (env IN ('sandbox','production')),
+  shortcode           text NOT NULL,
+  consumer_key_enc    text,
+  consumer_secret_enc text,
+  passkey_enc         text,
+  hook_token          text NOT NULL,
+  enabled             boolean NOT NULL DEFAULT false,
+  urls_registered_at  timestamptz,
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE mpesa_transactions (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id     uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  source              text NOT NULL CHECK (source IN ('stk','c2b','claim')),
+  status              text NOT NULL CHECK (status IN ('pending','paid','unmatched','failed','cancelled','ignored','claimed','rejected')),
+  checkout_request_id text,
+  trans_id            text,
+  amount              numeric(12,2),
+  phone               text,
+  account_ref         text,
+  student_id          uuid REFERENCES students(id) ON DELETE SET NULL,
+  payment_id          uuid REFERENCES fee_payments(id) ON DELETE SET NULL,
+  result_desc         text,
+  note                text,
+  raw                 jsonb,
+  created_by_id       text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  completed_at        timestamptz
+);
+-- The same M-Pesa receipt code can never be posted twice, even if Safaricom sends a message twice.
+CREATE UNIQUE INDEX uq_mpesa_trans ON mpesa_transactions (organization_id, trans_id) WHERE trans_id IS NOT NULL AND source <> 'claim';
+CREATE UNIQUE INDEX uq_mpesa_checkout ON mpesa_transactions (checkout_request_id) WHERE checkout_request_id IS NOT NULL;
+CREATE INDEX idx_mpesa_org_status ON mpesa_transactions (organization_id, status, created_at DESC);
+
+-- Waivers, bursaries, refunds (also in db/migrations/008_adjustments_refunds.sql for existing databases).
+CREATE TABLE fee_adjustments (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  student_id      uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  academic_year   text NOT NULL,
+  kind            text NOT NULL CHECK (kind IN ('waiver','bursary','discount','sibling','staff_child','other')),
+  amount          numeric(12,2) NOT NULL CHECK (amount > 0),
+  reason          text NOT NULL,
+  sponsor         text,
+  status          text NOT NULL DEFAULT 'approved' CHECK (status IN ('pending','approved','rejected','cancelled')),
+  created_by_id   text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_fee_adj_student ON fee_adjustments (student_id, academic_year);
+
+CREATE TABLE fee_refunds (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  student_id      uuid NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  academic_year   text NOT NULL,
+  amount          numeric(12,2) NOT NULL CHECK (amount > 0),
+  method          text NOT NULL CHECK (method IN ('cash','mpesa','bank','cheque','other')),
+  reference       text,
+  reason          text NOT NULL,
+  status          text NOT NULL DEFAULT 'approved' CHECK (status IN ('pending','approved','rejected','cancelled')),
+  refunded_on     date NOT NULL DEFAULT current_date,
+  created_by_id   text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_fee_refunds_student ON fee_refunds (student_id, academic_year);

@@ -5,7 +5,9 @@ import { audit } from './audit.js';
 // never approve their own request. Actions are plugged in with registerApprovalHandler(kind, fn),
 // which runs when the request is approved (for example, "void this payment").
 const handlers = new Map();
-export const registerApprovalHandler = (kind, fn) => handlers.set(kind, fn);
+// fn runs when approved; hooks.reject / hooks.cancel run when the request is turned down or withdrawn.
+export const registerApprovalHandler = (kind, fn, hooks = {}) => handlers.set(kind, { approve: fn, ...hooks });
+export const runCancelHook = async (row) => { await handlers.get(row.kind)?.cancel?.(row); };
 
 // The principal is the approver, so the principal's own actions go straight through.
 export const needsApproval = (role) => role !== 'principal';
@@ -31,8 +33,8 @@ export async function decide(req, id, approve, note = null) {
   const row = (await query(`SELECT * FROM approval_requests WHERE id = $1 AND organization_id = $2`, [id, req.auth.organizationId])).rows[0];
   const problem = deciderProblem(row, req.auth);
   if (problem) return { error: problem, status: row ? 403 : 404 };
-  const handler = approve ? handlers.get(row.kind) : null;
-  if (handler) await handler(row, req);
+  const hook = handlers.get(row.kind)?.[approve ? 'approve' : 'reject'];
+  if (hook) await hook(row, req);
   const updated = (await query(
     `UPDATE approval_requests SET status = $1, decided_by_id = $2, decided_at = now(), decision_note = $3
      WHERE id = $4 AND status = 'pending' RETURNING *`,

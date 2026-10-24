@@ -31,6 +31,8 @@ import { studentTransferRouter } from './routes/studentTransfer.js';
 import { passwordRequestsRouter } from './routes/passwordRequests.js';
 import { publicBookingsRouter, bookingsRouter } from './routes/bookings.js';
 import { staffRouter } from './routes/staff.js';
+import { mpesaRouter } from './routes/mpesa.js';
+import { payHooksRouter } from './routes/payHooks.js';
 import { auditRouter } from './routes/audit.js';
 import { approvalRequestsRouter } from './routes/approvalRequests.js';
 import { ensureSchema } from './lib/autoMigrate.js';
@@ -105,6 +107,8 @@ app.use('/public-api/bookings', rateLimit({ windowMs: 3_600_000, max: 16, messag
 app.use('/public-api', publicBookingsRouter);
 app.use('/bookings', bookingsRouter);
 app.use('/staff', staffRouter);
+app.use('/pay-hooks', payHooksRouter);   // Safaricom posts here (public, protected by a secret in the address)
+app.use('/mpesa', mpesaRouter);
 app.use('/audit', auditRouter);
 app.use('/approval-requests', approvalRequestsRouter);
 // Lets the Android app open this site full-screen (no browser bar). The two values come from the

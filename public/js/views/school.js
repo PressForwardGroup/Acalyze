@@ -89,23 +89,26 @@ export function receiptHtml(d) {
     <table>${row('Receipt no.', `<b>${esc(p.receipt_no)}</b>`)}${row('Date', esc(fmtDate(p.paid_on)))}${row('Received from', `${esc(p.full_name)} <span class="sm">(Adm ${esc(p.school_id_number)}${p.class_name ? ', ' + esc(p.class_name) : ''})</span>`)}
       ${row('Academic year', esc(p.academic_year))}${row('Amount received', `<b style="font-size:15px">${kes(p.amount)}</b>`)}${row('Paid by', `${esc(p.method.toUpperCase())}${p.reference ? ' · ' + esc(p.reference) : ''}`)}${p.note ? row('Note', esc(p.note)) : ''}</table>
     <table style="margin-top:8px">${row('Total fees for the year', kes(d.charged))}${row('Paid to date (including this)', kes(d.paidToDate))}${row('Balance', `<b>${kes(d.balanceAfter)}</b>`)}</table>
-    <div class="ln" style="margin-top:22px">Received by: ${p.received_by ? `<b>${esc(p.received_by)}</b>` : '<span class="bl"></span>'} &nbsp; Signature &amp; stamp: <span class="bl"></span></div></div>`;
+    <div class="ln" style="margin-top:22px">Received by: ${p.received_by ? `<b>${esc(p.received_by)}</b>` : p.method === 'mpesa' && !p.reversed_at ? '<b>M-Pesa (automatic)</b>' : '<span class="bl"></span>'} &nbsp; Signature &amp; stamp: <span class="bl"></span></div></div>`;
 }
 // A student's fee statement: charges by term, payments, balance, and how to pay. Works for the school and for parents.
 export function statementHtml(d) {
   const s = d.school, st = d.student, row = (a, b) => `<tr><td style="width:36%"><b>${a}</b></td><td>${b}</td></tr>`;
-  const lines = d.lines || d.items.map((i) => ({ ...i, paid: 0, balance: i.amount }));
-  const terms = [...new Set(lines.map((i) => i.term || 'Whole year'))];
+  const lines = d.lines || d.items.map((i) => ({ ...i, paid: 0, waived: 0, balance: i.amount })), hasW = d.waived > 0;
+  const terms = [...new Set(lines.map((i) => i.term || 'Whole year'))], span = hasW ? 6 : 5;
   const num = (n) => `<td style="text-align:right">${kes(n)}</td>`;
-  const charges = terms.map((t) => `<tr><td colspan="5" style="background:#f1f2f8"><b>${esc(t)}</b></td></tr>${lines.filter((i) => (i.term || 'Whole year') === t).map((i) => `<tr><td>${esc(i.name)}${i.vote_head && i.vote_head !== i.name ? ` <span class="sm">(${esc(i.vote_head)})</span>` : ''}${i.note ? `<div class="sm">${esc(i.note)}</div>` : ''}</td><td>${i.due_date ? esc(fmtDate(i.due_date)) : ''}</td>${num(i.amount)}${num(i.paid)}${num(i.balance)}</tr>`).join('')}`).join('');
+  const charges = terms.map((t) => `<tr><td colspan="${span}" style="background:#f1f2f8"><b>${esc(t)}</b></td></tr>${lines.filter((i) => (i.term || 'Whole year') === t).map((i) => `<tr><td>${esc(i.name)}${i.vote_head && i.vote_head !== i.name ? ` <span class="sm">(${esc(i.vote_head)})</span>` : ''}${i.note ? `<div class="sm">${esc(i.note)}</div>` : ''}</td><td>${i.due_date ? esc(fmtDate(i.due_date)) : ''}</td>${num(i.amount)}${hasW ? num(i.waived || 0) : ''}${num(i.paid)}${num(i.balance)}</tr>`).join('')}`).join('');
   const pays = d.payments.map((p) => `<tr${p.reversed_at ? ' style="text-decoration:line-through;color:#888"' : ''}><td>${esc(p.receipt_no)}${p.reversed_at ? ' (reversed)' : ''}</td><td>${esc(fmtDate(p.paid_on))}</td><td style="text-align:right">${kes(p.amount)}</td></tr>`).join('');
+  const KIND = { waiver: 'Waiver', bursary: 'Bursary', discount: 'Discount', sibling: 'Sibling discount', staff_child: 'Staff child discount', other: 'Reduction' };
+  const adjs = (d.adjustments || []).filter((a) => a.status === 'approved').map((a) => `<tr><td>${esc(KIND[a.kind] || a.kind)}${a.sponsor ? ` (${esc(a.sponsor)})` : ''}</td><td>${esc(a.reason || '')}</td><td style="text-align:right">${kes(a.amount)}</td></tr>`).join('');
   return `<div class="rcpt">${s.logo_url ? `<img class="logo" src="${esc(s.logo_url)}" alt="">` : ''}<h2>${esc(s.name)}</h2>${s.motto ? `<div class="mo">${esc(s.motto)}</div>` : ''}
     <div class="ti">FEE STATEMENT ${esc(d.year)}</div>
     <table>${row('Student', `${esc(st.full_name)} <span class="sm">(Adm ${esc(st.school_id_number)}${st.class_name ? ', ' + esc(st.class_name) : ''})</span>`)}</table>
-    <table style="margin-top:8px"><tr><td><b>Charges</b></td><td><b>Due</b></td><td style="text-align:right"><b>Amount</b></td><td style="text-align:right"><b>Paid</b></td><td style="text-align:right"><b>Balance</b></td></tr>${charges || '<tr><td colspan="5">No charges yet.</td></tr>'}</table>
-    <p class="sm" style="margin:4px 0 0">Payments are applied to the oldest charges first.</p>
+    <table style="margin-top:8px"><tr><td><b>Charges</b></td><td><b>Due</b></td><td style="text-align:right"><b>Amount</b></td>${hasW ? '<td style="text-align:right"><b>Waived</b></td>' : ''}<td style="text-align:right"><b>Paid</b></td><td style="text-align:right"><b>Balance</b></td></tr>${charges || `<tr><td colspan="${span}">No charges yet.</td></tr>`}</table>
+    <p class="sm" style="margin:4px 0 0">Reductions, then payments, are applied to the oldest charges first.</p>
+    ${adjs ? `<table style="margin-top:8px"><tr><td><b>Reductions</b></td><td><b>Reason</b></td><td style="text-align:right"><b>Amount</b></td></tr>${adjs}</table>` : ''}
     ${pays ? `<table style="margin-top:8px"><tr><td><b>Payments</b></td><td><b>Date</b></td><td style="text-align:right"><b>Amount</b></td></tr>${pays}</table>` : ''}
-    <table style="margin-top:8px">${row('Total charged', kes(d.charged))}${row('Total paid', kes(d.paid))}${row(d.balance < 0 ? 'Credit (overpaid)' : 'Balance', `<b>${kes(Math.abs(d.balance))}</b>`)}</table>
+    <table style="margin-top:8px">${row('Total charged', kes(d.charged))}${hasW ? row('Waived or reduced', kes(d.waived)) : ''}${row('Total paid', kes(d.paidGross ?? d.paid))}${d.refunded > 0 ? row('Refunded', kes(d.refunded)) : ''}${row(d.balance < 0 ? 'Credit (overpaid)' : 'Balance', `<b>${kes(Math.abs(d.balance))}</b>`)}</table>
     ${d.instructions ? `<p style="margin-top:12px"><b>How to pay</b><br><span style="white-space:pre-line">${esc(d.instructions)}</span></p>` : ''}</div>`;
 }
 export async function printStatement(studentId, year) { printHtml(statementHtml(await api(`/fees/statement/${studentId}?year=${year}`))); }
@@ -121,17 +124,17 @@ async function fees(el, ctx) {
   let tab = 'overview', year = cur;
   const draw = () => {
     el.innerHTML = `${ctx.bar('School fees', 'Charges, payments, balances and receipts', `<select class="i" id="yr" style="width:auto" aria-label="Academic year">${years.map((y) => `<option ${y === year ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select>`)}
-      <div class="tabs">${[['overview', 'Overview'], ['pay', 'Record a payment'], ['items', 'Charges'], ['bal', 'Balances']].map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-t="${k}">${l}</button>`).join('')}</div><div id="pane"></div>`;
+      <div class="tabs">${[['overview', 'Overview'], ['pay', 'Record a payment'], ['items', 'Charges'], ['bal', 'Balances'], ['adj', 'Waivers & refunds'], ['def', 'Defaulters'], ['cash', 'Cash-up'], ...(ctx.features.mpesa === true ? [['mpesa', 'M-Pesa']] : [])].map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-t="${k}">${l}</button>`).join('')}</div><div id="pane"></div>`;
     $$('.tab', el).forEach((b) => (b.onclick = () => { tab = b.dataset.t; draw(); }));
     $('#yr', el).onchange = (e) => { year = e.target.value; draw(); };
-    ({ overview, pay, items, bal })[tab]($('#pane', el)).catch((e) => toast(e.message, 'bad'));
+    ({ overview, pay, items, bal, adj, def, cash, mpesa })[tab]($('#pane', el)).catch((e) => toast(e.message, 'bad'));
   };
 
   async function overview(p) {
-    const [b, rep] = await Promise.all([api(`/fees/balances?year=${year}`), api(`/fees/report?year=${year}`).catch(() => null)]), s = b.summary;
+    const [b, rep, today] = await Promise.all([api(`/fees/balances?year=${year}`), api(`/fees/report?year=${year}`).catch(() => null), api('/fees/cashup').catch(() => null)]), s = b.summary;
     if (!s.charged && !s.collected) { p.innerHTML = '<div class="card empty">No fees set up for this year yet.<br>Add your charges first (the Charges tab), then record payments as they come in.</div>'; return; }
     const owing = b.rows.filter((r) => r.balance > 0).sort((x, y) => y.balance - x.balance).slice(0, 10);
-    p.innerHTML = `<div class="grid g4">${stat('Total charged', kes(s.charged), { tone: 'navy' })}${stat('Collected', kes(s.collected), { tone: 'green' })}${stat('Outstanding', kes(s.outstanding), { tone: 'red', sub: `${s.studentsOwing} of ${s.students} students owe` })}${s.credits > 0 ? stat('Credits (overpaid)', kes(s.credits), { tone: 'navy', sub: `${s.studentsInCredit} student${s.studentsInCredit === 1 ? '' : 's'}` }) : ''}${stat('Collection rate', s.collectionRate == null ? '—' : num(s.collectionRate) + '%', { tone: 'gold' })}</div>
+    p.innerHTML = `<div class="grid g4">${stat('Total charged', kes(s.charged), { tone: 'navy' })}${stat('Collected', kes(s.collected), { tone: 'green' })}${stat('Outstanding', kes(s.outstanding), { tone: 'red', sub: `${s.studentsOwing} of ${s.students} students owe` })}${today && today.payments.length ? stat('Collected today', kes(today.total), { tone: 'green', sub: `${today.payments.length} payment${today.payments.length === 1 ? '' : 's'}` }) : ''}${s.waived > 0 ? stat('Waived or reduced', kes(s.waived), { tone: 'navy', sub: 'bursaries and discounts' }) : ''}${s.credits > 0 ? stat('Credits (overpaid)', kes(s.credits), { tone: 'navy', sub: `${s.studentsInCredit} student${s.studentsInCredit === 1 ? '' : 's'}` }) : ''}${stat('Collection rate', s.collectionRate == null ? '—' : num(s.collectionRate) + '%', { tone: 'gold' })}</div>
       <div class="grid g2" style="margin-top:16px"><div class="card"><h2 style="margin-bottom:10px">Collected vs outstanding</h2>${donut([{ label: 'Collected', value: Math.round(s.collected) }, { label: 'Outstanding', value: Math.round(s.outstanding) }].filter((x) => x.value), { center: s.collectionRate == null ? '' : num(s.collectionRate) + '%', title: 'Fees collected versus outstanding' })}</div>
         <div class="card"><h2 style="margin-bottom:10px">Collection rate by class</h2>${hbarChart(s.byClass.filter((c) => c.rate != null).map((c) => ({ label: c.class_name, value: c.rate })), { max: 100, unit: '%', title: 'Collection rate by class', colorFn: (it) => (it.value >= 85 ? 'var(--c3)' : it.value >= 60 ? 'var(--c2)' : 'var(--c5)') })}</div></div>
       ${rep && rep.byVoteHead.length ? `<div class="grid g2" style="margin-top:16px">${[['By vote head', rep.byVoteHead], ['By term', rep.byTerm]].map(([t, rows]) => `<div class="card pad0"><div class="card-h">${t}</div>${table([t === 'By term' ? 'Term' : 'Vote head', 'Charged', 'Paid', 'Owed'], rows.map((r) => [`<b>${esc(r.key)}</b>`, kes(r.charged), kes(r.paid), r.balance > 0 ? `<b style="color:var(--bad)">${kes(r.balance)}</b>` : kes(0)]))}</div>`).join('')}</div><p class="sm mut" style="margin:6px 0 0">Each student's payments go to their oldest charges first (whole-year charges, then Term 1, 2 and 3).</p>` : ''}
@@ -243,6 +246,139 @@ async function fees(el, ctx) {
     $$('[data-del]', p).forEach((b) => (b.onclick = async () => { if (await confirmBox('Delete this charge? Balances change straight away. A finance officer needs the principal to approve deleting a published charge.', 'Delete')) run(b, async () => { said(await api(`/fees/items/${b.dataset.del}`, { method: 'DELETE' }), 'Deleted'); items(p); }); }));
     $('#brd', p).onclick = () => classPicker({ title: 'Who boards?', intro: 'Choose a class and tick the boarders. Everyone else in the class is a day scholar.', tick: (s) => s.boarding === 'boarding', load: (c) => api(`/fees/boarding?classId=${c}`), save: (c, ids) => api('/fees/boarding', { method: 'PUT', body: { classId: c, boardingIds: ids } }) });
     $('#sins', p).onclick = (e) => run(e.currentTarget, async () => { await api('/fees/instructions', { method: 'PATCH', body: { text: $('#ins', p).value } }); toast('Saved. Parents see this on their fees page.', 'ok'); });
+  }
+
+  // A name search that picks one student. onPick gets the student, or null while typing.
+  const studentSearch = (m, list, onPick) => {
+    const find = () => {
+      const q = $('#q', m).value.toLowerCase().trim();
+      $('#hits', m).innerHTML = q.length < 2 ? '' : list.filter((s) => (s.full_name + ' ' + s.school_id_number).toLowerCase().includes(q)).slice(0, 6).map((s) => `<button class="btn sm" style="margin:0 6px 6px 0" data-pk="${s.id}">${esc(s.full_name)} <span class="mut">${esc(s.school_id_number)}</span></button>`).join('');
+      $$('[data-pk]', m).forEach((x) => (x.onclick = () => { const s = list.find((z) => z.id === x.dataset.pk); $('#q', m).value = s.full_name; $('#hits', m).innerHTML = ''; onPick(s); }));
+    };
+    $('#q', m).oninput = () => { onPick(null); find(); };
+  };
+
+  // ---- waivers, bursaries, discounts and refunds ----
+  async function adj(p) {
+    const [ads, refs, students] = await Promise.all([api(`/fees/adjustments?year=${year}`), api(`/fees/refunds?year=${year}`), api('/students').catch(() => [])]);
+    const ST = { pending: ['Waiting for approval', 'warn'], approved: ['Approved', 'ok'], rejected: ['Rejected', 'bad'], cancelled: ['Cancelled', ''] };
+    const KIND = { waiver: 'Waiver', bursary: 'Bursary', discount: 'Discount', sibling: 'Sibling discount', staff_child: 'Staff child', other: 'Other' };
+    p.innerHTML = `<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="btn primary" id="aw">+ Waiver, bursary or discount</button><button class="btn" id="ar">+ Refund</button></div>
+      <h2 style="margin-bottom:8px">Waivers, bursaries and discounts</h2>
+      <div class="card pad0">${table(['Student', 'Kind', 'Amount', 'Why', 'Status'], ads.map((a) => [`<b>${esc(a.full_name)}</b><div class="sm mut">${esc(a.school_id_number)}</div>`, `${esc(KIND[a.kind] || a.kind)}${a.sponsor ? `<div class="sm mut">${esc(a.sponsor)}</div>` : ''}`, kes(a.amount), esc(a.reason), pill(...ST[a.status])]), { empty: `No waivers or bursaries for ${year}.` })}</div>
+      <h2 style="margin:20px 0 8px">Refunds</h2>
+      <div class="card pad0">${table(['Student', 'Amount', 'How', 'Why', 'Date', 'Status'], refs.map((r) => [`<b>${esc(r.full_name)}</b><div class="sm mut">${esc(r.school_id_number)}</div>`, kes(r.amount), esc(r.method), esc(r.reason), esc(fmtDate(r.refunded_on)), pill(...ST[r.status])]), { empty: `No refunds for ${year}.` })}</div>
+      <p class="sm mut" style="margin-top:10px">A waiver reduces what a student owes. A refund returns money a student has paid beyond what they owe. To refund a student who left, first reduce their remaining charges with a waiver. If you are the finance officer, the principal approves both.</p>`;
+    const done = (r, ok) => { toast(r?.pendingApproval ? r.message : ok, 'ok'); adj(p); };
+    $('#aw', p).onclick = () => {
+      let pick = null;
+      modal(`<h3>Waiver, bursary or discount</h3><label class="f" for="q" style="margin-top:10px">Student</label><input class="i" id="q" placeholder="Type a name or admission number" autocomplete="off"><div id="hits" style="margin-top:6px"></div><p class="sm mut" id="info"></p>
+        <div class="form-grid"><div><label class="f" for="kd">Kind</label><select class="i" id="kd">${Object.entries(KIND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div><div><label class="f" for="am">Amount (KSh)</label><input class="i" id="am" inputmode="decimal"></div></div>
+        <label class="f" for="sp" style="margin-top:10px">Sponsor (for bursaries, optional)</label><input class="i" id="sp" maxlength="80" placeholder="e.g. CDF, a church, a company">
+        <label class="f" for="rs" style="margin-top:10px">Why? *</label><input class="i" id="rs" maxlength="200">
+        <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go" disabled>Save</button></div>`, {
+        onMount: (m, close) => {
+          studentSearch(m, students, async (s) => { pick = s; $('#go', m).disabled = !s; $('#info', m).textContent = ''; if (s) { const d = await api(`/fees/statement/${s.id}?year=${year}`).catch(() => null); if (d && pick === s) $('#info', m).textContent = `Charged ${kes(d.charged)}, already reduced ${kes(d.waived)}.`; } });
+          $('#go', m).onclick = (e) => run(e.currentTarget, async () => { done(await api('/fees/adjustments', { method: 'POST', body: { studentId: pick.id, kind: $('#kd', m).value, amount: $('#am', m).value, sponsor: $('#sp', m).value, reason: $('#rs', m).value, academicYear: year } }), 'Saved'); close(); });
+        } });
+    };
+    $('#ar', p).onclick = () => {
+      let pick = null;
+      modal(`<h3>Refund</h3><label class="f" for="q" style="margin-top:10px">Student</label><input class="i" id="q" placeholder="Type a name or admission number" autocomplete="off"><div id="hits" style="margin-top:6px"></div><p class="sm mut" id="info"></p>
+        <div class="form-grid"><div><label class="f" for="am">Amount (KSh)</label><input class="i" id="am" inputmode="decimal"></div><div><label class="f" for="mt">How is it returned?</label><select class="i" id="mt">${['cash', 'mpesa', 'bank', 'cheque', 'other'].map((x) => `<option value="${x}">${x === 'mpesa' ? 'M-Pesa' : x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select></div></div>
+        <label class="f" for="rf" style="margin-top:10px">Reference (optional)</label><input class="i" id="rf" maxlength="60">
+        <label class="f" for="rs" style="margin-top:10px">Why? *</label><input class="i" id="rs" maxlength="200">
+        <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go" disabled>Save</button></div>`, {
+        onMount: (m, close) => {
+          studentSearch(m, students, async (s) => { pick = s; $('#go', m).disabled = !s; $('#info', m).textContent = ''; if (s) { const d = await api(`/fees/statement/${s.id}?year=${year}`).catch(() => null); if (d && pick === s) { $('#info', m).textContent = d.credit > 0 ? `Credit that can be refunded: ${kes(d.credit)}.` : 'No credit to refund: nothing has been paid beyond what is owed.'; if (d.credit > 0 && !$('#am', m).value) $('#am', m).value = d.credit; } } });
+          $('#go', m).onclick = (e) => run(e.currentTarget, async () => { done(await api('/fees/refunds', { method: 'POST', body: { studentId: pick.id, amount: $('#am', m).value, method: $('#mt', m).value, reference: $('#rf', m).value, reason: $('#rs', m).value, academicYear: year } }), 'Refund recorded'); close(); });
+        } });
+    };
+  }
+
+  // ---- who owes, and for how long ----
+  async function def(p) {
+    let classId = '', d;
+    const draw = async () => {
+      d = await api(`/fees/defaulters?year=${year}${classId ? `&classId=${classId}` : ''}`);
+      const a = d.ageing;
+      $('#dres', p).innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">${stat('Not yet due', kes(a.notDue), { tone: 'navy' })}${stat('1 to 30 days late', kes(a.d1_30), { tone: 'gold' })}${stat('31 to 60 days', kes(a.d31_60), { tone: 'gold' })}${stat('61 to 90 days', kes(a.d61_90), { tone: 'red' })}${stat('Over 90 days', kes(a.d90plus), { tone: 'red' })}</div>
+        <p class="sm mut" style="margin:10px 0">${d.students} student${d.students === 1 ? '' : 's'} owe ${kes(d.total)} in total. A charge counts as late once its due date has passed; charges with no due date are shown as not yet due.</p>
+        <div class="card pad0">${table(['Student', 'Class', 'Parent phone', 'Owes', 'Overdue', 'Oldest due', ''], d.rows.map((r) => [`<b>${esc(r.full_name)}</b><div class="sm mut">${esc(r.school_id_number)}</div>`, esc(r.class_name || '—'), r.parent_phone ? `<a href="tel:${esc(String(r.parent_phone).replace(/[^\d+]/g, ''))}">${esc(r.parent_phone)}</a>` : '—', `<b>${kes(r.balance)}</b>`, r.overdue > 0 ? `<b style="color:var(--bad)">${kes(r.overdue)}</b>` : '—', r.oldest_due ? `${esc(fmtDate(r.oldest_due))}<div class="sm mut">${r.days_overdue} days</div>` : '—', `<button class="btn sm" data-stm="${r.student_id}">Statement</button>`]), { empty: 'Nobody owes anything for this selection.' })}</div>`;
+      $$('[data-stm]', p).forEach((b) => (b.onclick = () => run(b, () => printStatement(b.dataset.stm, year))));
+    };
+    p.innerHTML = `<div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:end"><div><label class="f" for="cf">Class</label><select class="i" id="cf"><option value="">All classes</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div><button class="btn" id="csv">Download list (CSV)</button></div><div id="dres"></div>`;
+    $('#cf', p).onchange = (e) => { classId = e.target.value; draw(); };
+    $('#csv', p).onclick = () => {
+      const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csv = ['Student,Admission no,Class,Parent phone,Owes,Overdue,Oldest due,Days overdue', ...d.rows.map((r) => [r.full_name, r.school_id_number, r.class_name, r.parent_phone, r.balance, r.overdue, r.oldest_due, r.days_overdue].map(q).join(','))].join('\n');
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `defaulters-${year}.csv` }); a.click(); URL.revokeObjectURL(a.href);
+    };
+    await draw();
+  }
+
+  // ---- the day's takings, for cashing up ----
+  async function cash(p) {
+    let date = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10), d;
+    const METHOD = { cash: 'Cash', mpesa: 'M-Pesa', bank: 'Bank', cheque: 'Cheque', other: 'Other' };
+    const draw = async () => {
+      d = await api(`/fees/cashup?date=${date}`);
+      $('#cres', p).innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">${d.byMethod.map((m) => stat(METHOD[m.method] || m.method, kes(m.total), { sub: `${m.count} payment${m.count === 1 ? '' : 's'}` })).join('')}${stat('Total received', kes(d.total), { tone: 'green' })}${d.refunded > 0 ? stat('Refunded', kes(d.refunded), { tone: 'red' }) : ''}${d.refunded > 0 ? stat('Net', kes(d.net), { tone: 'navy' }) : ''}</div>
+        <div class="card pad0" style="margin-top:14px">${table(['Receipt', 'Student', 'Method', 'Reference', 'Amount', 'Recorded by'], d.payments.map((x) => [esc(x.receipt_no), `<b>${esc(x.full_name)}</b>`, esc(METHOD[x.method] || x.method), esc(x.reference || '—'), kes(x.amount), esc(x.recorded_by || 'M-Pesa (automatic)')]), { empty: 'No payments recorded for this day.' })}</div>
+        ${d.reversed.length ? `<p class="sm" style="margin:10px 0 0"><b>Reversed on this day (not counted):</b> ${d.reversed.map((x) => `${esc(x.receipt_no)} ${kes(x.amount)} (${esc(x.full_name)}: ${esc(x.reversal_reason || '')})`).join('; ')}</p>` : ''}`;
+    };
+    p.innerHTML = `<div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:end"><div><label class="f" for="cd">Date</label><input class="i" id="cd" type="date" value="${date}"></div><button class="btn" id="pr">Print</button></div><div id="cres"></div>`;
+    $('#cd', p).onchange = (e) => { date = e.target.value || date; draw(); };
+    $('#pr', p).onclick = () => printHtml(`<div class="rcpt"><h2>Daily cash-up</h2><div class="ti">${esc(fmtDate(date))}</div><table>${d.byMethod.map((m) => `<tr><td>${esc(METHOD[m.method] || m.method)} (${m.count})</td><td style="text-align:right">${kes(m.total)}</td></tr>`).join('')}<tr><td><b>Total received</b></td><td style="text-align:right"><b>${kes(d.total)}</b></td></tr>${d.refunded > 0 ? `<tr><td>Refunded</td><td style="text-align:right">${kes(d.refunded)}</td></tr><tr><td><b>Net</b></td><td style="text-align:right"><b>${kes(d.net)}</b></td></tr>` : ''}</table><table style="margin-top:10px">${d.payments.map((x) => `<tr><td>${esc(x.receipt_no)}</td><td>${esc(x.full_name)}</td><td>${esc(METHOD[x.method] || x.method)}</td><td style="text-align:right">${kes(x.amount)}</td></tr>`).join('')}</table><p class="ln" style="margin-top:22px">Counted by: <span class="bl"></span> &nbsp; Signed: <span class="bl"></span></p></div>`);
+    await draw();
+  }
+
+  // ---- M-Pesa: the school's own Paybill, payments that need a decision, and recent M-Pesa payments ----
+  const MP = { paid: ['Recorded', 'ok'], pending: ['Waiting', 'warn'], unmatched: ['Needs a student', 'bad'], claimed: ['Parent says paid', 'warn'], failed: ['Failed', 'bad'], cancelled: ['Cancelled', ''], ignored: ['Set aside', ''], rejected: ['Rejected', ''] };
+  async function mpesa(p) {
+    let cfg;
+    try { cfg = await api('/mpesa/settings'); } catch (e) { p.innerHTML = `<div class="card"><p class="mut" style="margin:0">Only the principal or the finance officer can set up M-Pesa.</p></div>`; return; }
+    const [queue, recent, students] = await Promise.all([api('/mpesa/transactions'), api('/mpesa/transactions?view=recent'), api('/students').catch(() => [])]), s = cfg.settings;
+    const when = (t) => new Date(t).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const secret = (has) => `type="password" autocomplete="new-password" placeholder="${has ? 'Saved. Leave empty to keep it' : ''}"`;
+    p.innerHTML = `${cfg.secretsReady ? '' : '<div class="notice" style="margin-bottom:14px">The server is not set up to store keys yet. Ask Acalyze support to add the MPESA_SECRET_KEY setting.</div>'}
+      <div class="card"><h2 style="margin-bottom:6px">Your Paybill</h2><p class="sm mut">Parents pay straight into your own Paybill. Acalyze never holds your money. Get the keys from your Safaricom Daraja account.</p>
+        <div class="form-grid" style="margin-top:12px">
+          <div><label class="f" for="sc">Paybill number</label><input class="i" id="sc" inputmode="numeric" value="${esc(s?.shortcode || '')}"></div>
+          <div><label class="f" for="ev">Mode</label><select class="i" id="ev"><option value="sandbox" ${s?.env !== 'production' ? 'selected' : ''}>Test (sandbox)</option><option value="production" ${s?.env === 'production' ? 'selected' : ''}>Live (real money)</option></select></div>
+          <div><label class="f" for="ck">Consumer key</label><input class="i" id="ck" ${secret(s?.hasKey)}></div>
+          <div><label class="f" for="cs">Consumer secret</label><input class="i" id="cs" ${secret(s?.hasSecret)}></div>
+          <div><label class="f" for="pk">Passkey</label><input class="i" id="pk" ${secret(s?.hasPasskey)}></div>
+          <div style="display:flex;align-items:end"><label class="row" style="gap:8px"><input type="checkbox" id="en" ${s?.enabled ? 'checked' : ''}> <b>M-Pesa is switched on</b></label></div></div>
+        <div class="row" style="gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn primary" id="sv">Save</button><button class="btn" id="ts" ${s ? '' : 'disabled'}>Test my keys</button><button class="btn" id="rg" ${s ? '' : 'disabled'}>Register payment addresses</button></div>
+        ${s ? `<p class="sm mut" style="margin:10px 0 0">${s.urlsRegisteredAt ? `Payment addresses registered with Safaricom on ${esc(fmtDate(s.urlsRegisteredAt))}.` : 'Payment addresses are not registered yet. Do this once, after saving and testing, so payments made straight to your Paybill reach Acalyze.'}</p>
+          ${s.urls ? `<details style="margin-top:8px"><summary class="sm">Show the addresses</summary><div class="sm" style="margin-top:6px;word-break:break-all">${['stk', 'confirm', 'validate'].map((k) => `<div class="mut">${k}</div><code>${esc(s.urls[k])}</code>`).join('')}</div><button class="btn sm danger" id="rot" style="margin-top:8px">Make new secret addresses</button></details>` : `<p class="sm" style="color:var(--bad)">${cfg.appUrlSet ? '' : 'The server needs the APP_URL setting before it can tell Safaricom where to send payments.'}</p>`}` : ''}</div>
+      <h2 style="margin:20px 0 8px">Needs your attention${queue.length ? ` (${queue.length})` : ''}</h2>
+      <div class="card pad0">${table(['When', 'Code', 'Amount', 'Details', ''], queue.map((t) => [esc(when(t.created_at)), `<b>${esc(t.trans_id || '—')}</b>`, t.amount != null ? kes(t.amount) : '—',
+        `${pill(...MP[t.status])} ${t.source === 'claim' ? `<span class="sm">Parent of ${esc(t.student_name || 'a student')} says they paid.${t.note ? ' ' + esc(t.note) : ''}</span>` : `<span class="sm">Account typed: <b>${esc(t.account_ref || 'nothing')}</b>${t.phone ? ' · ' + esc(t.phone) : ''}</span>`}`,
+        `<div class="row" style="gap:6px"><button class="btn sm primary" data-as="${t.id}">Assign</button><button class="btn sm" data-ig="${t.id}">Set aside</button></div>`]), { empty: 'Nothing waiting. Every M-Pesa payment found its student.' })}</div>
+      <h2 style="margin:20px 0 8px">Recent M-Pesa payments</h2>
+      <div class="card pad0">${table(['When', 'Code', 'Amount', 'Student', 'Status'], recent.map((t) => [esc(when(t.created_at)), esc(t.trans_id || '—'), t.amount != null ? kes(t.amount) : '—', esc(t.student_name || '—'), `${pill(...MP[t.status])}${t.receipt_no ? ` <span class="sm mut">${esc(t.receipt_no)}</span>` : ''}`]), { empty: 'No M-Pesa payments yet.' })}</div>`;
+    const sayErr = (e) => toast(e.message, 'bad');
+    $('#sv', p).onclick = (e) => run(e.currentTarget, async () => { await api('/mpesa/settings', { method: 'PUT', body: { shortcode: $('#sc', p).value, env: $('#ev', p).value, consumerKey: $('#ck', p).value, consumerSecret: $('#cs', p).value, passkey: $('#pk', p).value, enabled: $('#en', p).checked } }); toast('Saved', 'ok'); mpesa(p); });
+    $('#ts', p).onclick = (e) => run(e.currentTarget, async () => { const r = await api('/mpesa/test', { method: 'POST', body: {} }); toast(r.message, 'ok'); });
+    $('#rg', p).onclick = (e) => run(e.currentTarget, async () => { await api('/mpesa/register-urls', { method: 'POST', body: {} }); toast('Registered with Safaricom', 'ok'); mpesa(p); });
+    $('#rot', p)?.addEventListener('click', async (e) => { if (await confirmBox('Make new secret addresses? The old ones stop working. You must register the payment addresses again afterwards.', 'Make new')) run(e.target, async () => { await api('/mpesa/rotate-token', { method: 'POST', body: {} }); toast('Done. Register the payment addresses again.', 'ok'); mpesa(p); }); });
+    $$('[data-as]', p).forEach((b) => (b.onclick = () => {
+      const t = queue.find((x) => x.id === b.dataset.as); let pick = t.student_id || null;
+      modal(`<h3>Assign this payment</h3><p class="sm mut">${t.amount != null ? kes(t.amount) : 'An amount'} · code ${esc(t.trans_id || '—')}${t.source === 'claim' ? '. Check the code against your M-Pesa statement first.' : `. The parent typed <b>${esc(t.account_ref || 'nothing')}</b>.`}</p>
+        <label class="f" for="q">Student</label><input class="i" id="q" placeholder="Type a name or admission number" autocomplete="off" value="${esc(t.student_name || '')}"><div id="hits" style="margin-top:6px"></div>
+        <label class="f" for="amt" style="margin-top:12px">Amount received (KSh)</label><input class="i" id="amt" inputmode="decimal" value="${t.amount ?? ''}">
+        <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go" ${pick ? '' : 'disabled'}>Record payment</button></div>`, {
+        onMount: (m, close) => {
+          const find = () => { const q = $('#q', m).value.toLowerCase().trim(); $('#hits', m).innerHTML = q.length < 2 ? '' : students.filter((s) => (s.full_name + ' ' + s.school_id_number).toLowerCase().includes(q)).slice(0, 6).map((s) => `<button class="btn sm" style="margin:0 6px 6px 0" data-pk="${s.id}">${esc(s.full_name)} <span class="mut">${esc(s.school_id_number)}</span></button>`).join('');
+            $$('[data-pk]', m).forEach((x) => (x.onclick = () => { pick = x.dataset.pk; $('#q', m).value = students.find((s) => s.id === pick).full_name; $('#hits', m).innerHTML = ''; $('#go', m).disabled = false; })); };
+          $('#q', m).oninput = () => { pick = null; $('#go', m).disabled = true; find(); };
+          $('#go', m).onclick = (e) => run(e.currentTarget, async () => { const r = await api(`/mpesa/transactions/${t.id}/assign`, { method: 'POST', body: { studentId: pick, amount: $('#amt', m).value } }); close(); toast(`Recorded as receipt ${r.receipt_no}`, 'ok'); mpesa(p); });
+        } });
+    }));
+    $$('[data-ig]', p).forEach((b) => (b.onclick = () => modal(`<h3>Set this payment aside</h3><p class="sm mut">For example, it is not a school fee, or it was refunded. It stays on record.</p><input class="i" id="why" maxlength="200" placeholder="Reason"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn danger" id="go">Set aside</button></div>`, {
+      onMount: (m, close) => { $('#go', m).onclick = (e) => run(e.currentTarget, async () => { await api(`/mpesa/transactions/${b.dataset.ig}/ignore`, { method: 'POST', body: { reason: $('#why', m).value } }); close(); mpesa(p); }); } })));
   }
 
   async function bal(p) {

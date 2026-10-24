@@ -1,7 +1,7 @@
 import { verifyToken } from '../lib/auth.js';
 import { orgIsActive } from '../lib/orgStatus.js';
 import { sessionRevoked } from '../lib/sessions.js';
-import { roleAllowed, can } from '../lib/permissions.js';
+import { roleAllowed, can, isRead } from '../lib/permissions.js';
 
 // Attaches req.auth = { organizationId, centerId, role, sub, section? } from
 // a verified JWT. organizationId is the ONLY source of truth for which
@@ -39,6 +39,9 @@ export function requireRole(...roles) {
     // because an unrelated school's admin rights are not platform_admin's
     // by default. Once switched, req.auth.role is rewritten to 'admin'
     // for that request's lifetime, so this check needs no special case.
+    if (req.auth?.role === 'principal' && roles.includes('admin') && !isRead(req.method)) {
+      return res.status(403).json({ error: 'The principal can view this but not change it. Ask the school admin.' });
+    }
     if (!req.auth || !roleAllowed(req.auth.role, roles, req.method, req.baseUrl, req.path)) {
       return res.status(403).json({ error: `This action requires one of: ${roles.join(', ')}` });
     }

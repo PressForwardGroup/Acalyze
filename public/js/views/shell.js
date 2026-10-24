@@ -61,7 +61,8 @@ export async function mountShell(app, s, viewKey) {
     async refreshBadges() { await updateBadges(app, role, features); },
     go(k) { location.hash = `#/app/${k}`; } };
   const el = $('#main', app);
-  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div class="row" style="gap:10px;align-items:flex-start"><button class="btn sm menu-btn" data-menu aria-label="Open menu">☰</button><div><h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div></div><div class="row">${actions}</div></div>`;
+  const viewOnly = role === 'principal' && ['analytics', 'watch', 'reportcards'].includes(viewKey);   // the principal looks, the school admin changes
+  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div class="row" style="gap:10px;align-items:flex-start"><button class="btn sm menu-btn" data-menu aria-label="Open menu">☰</button><div><h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div></div><div class="row">${viewOnly ? '' : actions}</div></div>`;
   ctx.bar = bar;
 
   el.innerHTML = '<div class="empty">Loading…</div>';

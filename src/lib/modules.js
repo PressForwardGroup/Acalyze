@@ -10,6 +10,7 @@ export const MODULES = [
   { key: 'exam_timetable', group: 'Academic', label: 'Exam timetable', soon: true },
   { key: 'duty_roster', group: 'Academic', label: 'Duty roster', soon: true },
   { key: 'fees', group: 'Finance', label: 'Student fees and payments' },
+  { key: 'mpesa', group: 'Finance', label: 'M-Pesa payments (pay from the app, automatic matching)' },
   { key: 'accounts', group: 'Finance', label: 'School accounts: expenses, budget, cashbook', soon: true },
   { key: 'public_extras', group: 'Finance', label: 'Public-school extras: capitation, procurement, stores', soon: true },
   { key: 'sms', group: 'Messaging', label: 'SMS', soon: true },

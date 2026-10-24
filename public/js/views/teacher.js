@@ -67,10 +67,11 @@ async function myclass(el, ctx) {
     <div><label class="f" for="ex">Exam</label><select class="i" id="ex">${opt(exams, (e) => e.id, (e) => e.name)}</select></div></div></div><div id="res" style="margin-top:16px"></div>`;
   const load = async () => {
     const classId = $('#cl', el).value, examId = $('#ex', el).value; $('#res', el).innerHTML = '<div class="empty">Loading…</div>';
-    const [r, rem] = await Promise.all([api(`/student-transfer/class-results?examId=${examId}&classId=${classId}`), api(`/remarks?examId=${examId}&classId=${classId}`)]);
+    const [r, rem, fees] = await Promise.all([api(`/student-transfer/class-results?examId=${examId}&classId=${classId}`), api(`/remarks?examId=${examId}&classId=${classId}`), api('/fees/cleared').catch(() => ({ cleared: [] }))]);
+    const cleared = new Set(fees.cleared);   // only a tag: teachers never see amounts
     const note = Object.fromEntries(rem.map((x) => [x.student_id, x.text]));
     const rows = [...r.results].sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9));
-    $('#res', el).innerHTML = `<div class="card pad0">${table(['Pos', 'Student', 'Subjects', 'Mean', 'Grade', 'Comment (saves when you click away)'], rows.map((x) => [x.position ?? '<span class="mut">W</span>', `<b>${esc(x.student.full_name)}</b>`, x.subjectsDone, x.mean != null ? num(x.mean) + '%' : '—', x.grade ? pill(x.grade) : '—',
+    $('#res', el).innerHTML = `<div class="card pad0">${table(['Pos', 'Student', 'Subjects', 'Mean', 'Grade', 'Comment (saves when you click away)'], rows.map((x) => [x.position ?? '<span class="mut">W</span>', `<b>${esc(x.student.full_name)}</b>${cleared.has(x.student.id) ? ' <span class="pill ok">Fees cleared</span>' : ''}`, x.subjectsDone, x.mean != null ? num(x.mean) + '%' : '—', x.grade ? pill(x.grade) : '—',
       `<input class="i" style="min-width:260px;min-height:34px" data-c="${x.student.id}" value="${esc(note[x.student.id] || '')}" maxlength="300" placeholder="e.g. Good progress, keep it up">`]), { empty: 'No students.' })}</div>`;
     $$('[data-c]', el).forEach((i) => (i.onchange = () => run(null, async () => { await api('/remarks', { method: 'PUT', body: { examId, studentId: i.dataset.c, text: i.value } }); i.style.borderColor = 'var(--ok)'; setTimeout(() => (i.style.borderColor = ''), 900); })));
   };
