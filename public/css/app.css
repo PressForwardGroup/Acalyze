@@ -299,3 +299,21 @@ svg .val{fill:var(--ink);font-weight:600}
 .auth-card p:has(> a[hidden]):not(:has(> a:not([hidden]))){display:none}
 .set2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
 @media (max-width:480px){.set2{grid-template-columns:1fr}}
+
+/* student list and profile */
+.who{display:flex;align-items:center;gap:10px}
+.ava{width:34px;height:34px;border-radius:99px;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;background:var(--line2);color:var(--mut)}
+.ava.lg{width:56px;height:56px;font-size:18px}
+.ava.b5{background:var(--b5bg);color:var(--b5ink)}.ava.b4{background:var(--b4bg);color:var(--b4ink)}.ava.b3{background:var(--b3bg);color:var(--b3ink)}.ava.b2{background:var(--b2bg);color:var(--b2ink)}.ava.b1{background:var(--b1bg);color:var(--b1ink)}
+tr.click{cursor:pointer}
+.filters{margin:0 0 4px}
+.attb{display:flex;align-items:center;gap:8px}.attb .bar{width:64px;height:7px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:var(--line2);font-size:12px;font-weight:550}
+.chip button{border:0;background:none;cursor:pointer;color:var(--mut);font:inherit;padding:0}.chip button:hover{color:var(--ink)}
+.chip.view{background:var(--surface);border:1px solid var(--line)}
+.prof{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.subj{display:grid;grid-template-columns:110px 1fr 46px auto;gap:10px;align-items:center;padding:7px 0;font-size:13px}
+.trend{display:flex;align-items:flex-end;gap:16px;min-height:170px;padding-top:8px}
+.trend>div{flex:1;text-align:center;display:flex;flex-direction:column;justify-content:flex-end;gap:4px}
+.tb{border-radius:8px 8px 0 0;min-width:24px}
+@media (max-width:640px){.subj{grid-template-columns:90px 1fr 42px}.subj .pill{display:none}}

@@ -20,7 +20,7 @@ const NAV = {
   teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
   parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
 };
-const HIDDEN = { admin: [['subscription', 'Subscription'], ['audit', 'Audit log']] };      // reachable from Settings, not the menu
+const HIDDEN = { admin: [['subscription', 'Subscription', 'Settings'], ['audit', 'Audit log', 'Settings'], ['student', 'Student profile', 'Students']] };   // reachable from other pages, not the menu
 const TABBAR = ['teacher', 'parent', 'finance'];                                         // few pages: bottom tabs on phones
 const REPORT_KEYS = ['analytics', 'watch', 'reportcards', 'fees', 'attendance', 'myclass', 'approvals', 'students'];
 const MODULE = {
@@ -38,6 +38,7 @@ const HELP = {
   analytics: ['Pick an exam at the top to see how every class did.', 'Bars use the colour scale, so weak classes stand out at once.'],
   watch: ['These are the students who need help first, worst at the top.', 'Orange is at risk. Red is critical.'],
   reportcards: ['Choose the exam and class, then print or download the report cards.'],
+  student: ['Tabs: Academic, Attendance, Personal and Contact.', 'The colours use the same scale as everywhere else: blue is excellent, red is critical.'],
   students: ['Add students one by one, or bring many in with "Import from Excel".', 'Search by name or admission number.'],
   classes: ['Each class has a grading style: 8-4-4 or CBC.'],
   marks: ['Upload marks as a file, or let teachers type them in.'],
@@ -70,19 +71,19 @@ export async function mountShell(app, s, viewKey) {
   if (role === 'admin' && me.financeSeparated) nav = nav.filter((n) => n[0] !== 'fees');
   walk(nav);
   const valid = new Set([...flat.map((f) => f.k), 'settings', ...(HIDDEN[role] || []).map((h) => h[0])]);
-  const key = valid.has(viewKey) ? viewKey : flat[0].k;
+  const key = valid.has(viewKey) ? viewKey : flat[0].k, navKey = key === 'student' ? 'students' : key;   // a student profile belongs to Students
   const acting = session.hasStash();
   const lock = (b) => (b?.startsWith('lock:') && features[b.slice(5)] === false ? ' 🔒' : '');
   const bdg = (b) => `<span class="badge hide" data-badge="${b && !b.startsWith('lock:') ? b : ''}"></span>`;
-  const link = (f, cls = '') => `<a href="#/app/${f.k}" class="${f.k === key ? 'on' : ''} ${cls}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a>`;
+  const link = (f, cls = '') => `<a href="#/app/${f.k}" class="${f.k === navKey ? 'on' : ''} ${cls}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a>`;
 
   const links = nav.map((n) => {
-    if (!n.g) { const f = flat.find((x) => x.k === n[0]); return `<div class="tn-item"><a class="tn-btn ${f.k === key ? 'on' : ''}" href="#/app/${f.k}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a></div>`; }
-    const open = n.items.some((i) => i[0] === key);
+    if (!n.g) { const f = flat.find((x) => x.k === n[0]); return `<div class="tn-item"><a class="tn-btn ${f.k === navKey ? 'on' : ''}" href="#/app/${f.k}"><span>${esc(f.label)}${lock(f.badge)}</span>${bdg(f.badge)}</a></div>`; }
+    const open = n.items.some((i) => i[0] === navKey);
     return `<div class="tn-item"><button class="tn-btn ${open ? 'on' : ''}" aria-haspopup="true" aria-expanded="false">${esc(n.g)} <span class="caret">▾</span><span class="dot"></span></button><div class="tn-menu" role="menu">${n.items.map((i) => link(flat.find((x) => x.k === i[0]))).join('')}</div></div>`;
   }).join('');
   const sheet = nav.map((n) => (n.g ? `<div class="sh-h">${esc(n.g)}</div>${n.items.map((i) => link(flat.find((x) => x.k === i[0]))).join('')}` : link(flat.find((x) => x.k === n[0])))).join('');
-  const tabbar = TABBAR.includes(role) ? `<nav class="tabbar no-print" aria-label="Main">${flat.map((f) => `<a href="#/app/${f.k}" class="${f.k === key ? 'on' : ''}">${svg(f.k)}<span>${esc(f.label)}</span>${bdg(f.badge)}</a>`).join('')}</nav>` : '';
+  const tabbar = TABBAR.includes(role) ? `<nav class="tabbar no-print" aria-label="Main">${flat.map((f) => `<a href="#/app/${f.k}" class="${f.k === navKey ? 'on' : ''}">${svg(f.k)}<span>${esc(f.label)}</span>${bdg(f.badge)}</a>`).join('')}</nav>` : '';
   const sup = me.support || {};
 
   app.innerHTML = `${acting ? `<div class="banner no-print"><span>Viewing <b>${esc(me.organization || 'a school')}</b> as Acalyze support.</span><button class="btn sm" id="exitAct">Back to platform</button></div>` : ''}
@@ -110,7 +111,7 @@ export async function mountShell(app, s, viewKey) {
   addEventListener('keydown', escKey);
   $('#burger', app).onclick = () => $('#sheet', app).classList.toggle('open');
 
-  const pool = [...flat, { k: 'settings', label: 'Settings', group: 'Account' }, ...(HIDDEN[role] || []).map((h) => ({ k: h[0], label: h[1], group: 'Settings' }))];
+  const pool = [...flat, { k: 'settings', label: 'Settings', group: 'Account' }, ...(HIDDEN[role] || []).filter((h) => h[0] !== 'student').map((h) => ({ k: h[0], label: h[1], group: h[2] }))];
   const jump = $('#jump', app), res = $('#jumpRes', app);
   jump.oninput = () => {
     const q = jump.value.trim().toLowerCase(), hits = q ? pool.filter((p) => p.label.toLowerCase().includes(q)).slice(0, 7) : [];
@@ -124,13 +125,13 @@ export async function mountShell(app, s, viewKey) {
   $('#out', app).onclick = () => { session.clear(); location.hash = '#/login'; };
   $('#exitAct', app)?.addEventListener('click', () => { session.restore(); location.hash = '#/app'; location.reload(); });
 
-  const here = flat.find((f) => f.k === key) || pool.find((p) => p.k === key);
+  const here = flat.find((f) => f.k === key) || pool.find((p) => p.k === key) || (HIDDEN[role] || []).map((h) => ({ k: h[0], label: h[1], group: h[2] })).find((p) => p.k === key);
   const ctx = { me, role, features, key,
     async refreshBadges() { await updateBadges(app, role, features); },
     go(k) { location.hash = `#/app/${k}`; } };
   const el = $('#main', app);
   const viewOnly = role === 'principal' && ['analytics', 'watch', 'reportcards'].includes(viewKey);   // the principal looks, the school admin changes
-  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div>${here?.group ? `<div class="crumbs">${esc(here.group)} <span>›</span> ${esc(here.label)}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div><div class="row">${viewOnly ? '' : actions}${HELP[key] ? '<button class="btn sm" data-help>? Help</button>' : ''}</div></div>`;
+  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div>${here?.group && here.group !== here.label ? `<div class="crumbs">${esc(here.group)} <span>›</span> ${esc(here.label)}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div><div class="row">${viewOnly ? '' : actions}${HELP[key] ? '<button class="btn sm" data-help>? Help</button>' : ''}</div></div>`;
   ctx.bar = bar;
   el.addEventListener('click', (e) => {
     if (!e.target.closest('[data-help]')) return;

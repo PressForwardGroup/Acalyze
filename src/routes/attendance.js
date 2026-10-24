@@ -76,6 +76,23 @@ attendanceRouter.get('/summary', requireRole('admin'), asyncHandler(async (req, 
   res.json({ from, to, overallRate: rate(all), counts: all, classes, frequentAbsentees: frequent.rows });
 }));
 
+// Each student's attendance over a period (default: the last 30 days), for the student list and profile. Admin only.
+// Pass studentId to get just one student.
+attendanceRouter.get('/rates', requireRole('admin'), asyncHandler(async (req, res) => {
+  const to = validDay(req.query.to) || today(), from = validDay(req.query.from) || daysAgo(30);
+  const params = [req.auth.organizationId, from, to];
+  let only = '';
+  if (req.query.studentId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.query.studentId))) return res.status(400).json({ error: 'Not a valid student' });
+    params.push(req.query.studentId); only = ' AND a.student_id = $4';
+  }
+  const { rows } = await query(
+    `SELECT a.student_id, count(*)::int AS total, count(*) FILTER (WHERE a.status = 'present')::int AS present, count(*) FILTER (WHERE a.status = 'late')::int AS late,
+            count(*) FILTER (WHERE a.status = 'absent')::int AS absent, count(*) FILTER (WHERE a.status = 'excused')::int AS excused
+     FROM attendance a WHERE a.organization_id = $1 AND a.day BETWEEN $2::date AND $3::date${only} GROUP BY a.student_id`, params);
+  res.json({ from, to, rows: rows.map((r) => ({ ...r, rate: rate(r) })) });
+}));
+
 // A parent sees only their own child's record.
 attendanceRouter.get('/mine', requireRole('parent'), asyncHandler(async (req, res) => {
   const { studentId } = req.query;
