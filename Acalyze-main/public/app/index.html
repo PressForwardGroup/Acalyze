@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B1530">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Acalyze">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Acalyze — school results that stand up</title>
+<meta name="description" content="Acalyze turns raw marks into trusted report cards and clear analytics for 8-4-4 and CBC schools.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23F5B921'/%3E%3Cpath d='M9 16l5 5 9-10' stroke='%230B1530' stroke-width='3.5' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script>
+  // Apply the saved/system theme before first paint, so there is no light flash in dark mode.
+  (function () { var s = localStorage.getItem('acalyze.theme'); var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; document.documentElement.dataset.theme = d ? 'dark' : 'light'; })();
+</script>
+</head>
+<body>
+<div class="stripe" aria-hidden="true"></div>
+<div id="app"><div class="empty">Loading…</div></div>
+<noscript><div class="empty">Acalyze needs JavaScript to run. Please enable it and reload.</div></noscript>
+<script type="module" src="/js/main.js"></script>
+<script>if ("serviceWorker" in navigator) addEventListener("load", function () { navigator.serviceWorker.register("/sw.js", { scope: "/app/" }).catch(function () {}); });</script>
+</body>
+</html>

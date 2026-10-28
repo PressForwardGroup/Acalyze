@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: acalyze
+    runtime: node
+    plan: free              # fine to try it out; see DEPLOYMENT.md before real schools use it
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: acalyze-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PLATFORM_ADMIN_EMAIL        # your own sign-in, created on first boot
+        sync: false
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false
+      - key: PLATFORM_ADMIN_NAME
+        value: Platform Admin
+      - key: PAYBILL_NUMBER              # shown to schools on their Subscription page
+        sync: false
+      - key: SUPPORT_EMAIL               # shown to school admins as Acalyze support
+        sync: false
+      - key: SUPPORT_PHONE
+        sync: false
+      - key: MPESA_SECRET_KEY            # 64 hex characters, see MPESA.md
+        sync: false
+      - key: SITE_URL                    # your public website, e.g. https://www.acalyze.com
+        sync: false
+      - key: NOTIFY_EMAIL                # booking alerts go here
+        sync: false
+      - key: MEET_LINK                   # your Google Meet link for video bookings
+        sync: false
+      - key: OFFICE_ADDRESS              # shown for face-to-face meetings
+        sync: false
+      - key: ANDROID_PACKAGE_NAME        # e.g. com.yourname.acalyze (see ANDROID.md)
+        sync: false
+      - key: ANDROID_SHA256              # signing-key fingerprint(s) from the app build, comma-separated
+        sync: false
+      - key: APP_URL                     # e.g. https://app.acalyze.com (used in emails)
+        sync: false
+      - key: SEED_DEMO                   # "true" once, to create a demo school to click around in
+        value: "false"
+
+databases:
+  - name: acalyze-db
+    plan: free
