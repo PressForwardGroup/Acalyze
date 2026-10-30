@@ -11,7 +11,7 @@ import { passwordProblem } from '../lib/password.js';
 import { MODULES, normalizeModules } from '../lib/modules.js';
 import { featuresForOrgRow } from '../lib/plans.js';
 import { SECTION_KEYS, SECTION_LABELS } from '../lib/curriculum.js';
-import { normalizeSections } from '../lib/sections.js';
+import { normalizeSections, parseSections } from '../lib/sections.js';
 
 export const organizationsRouter = Router();
 organizationsRouter.use(requireAuth, requirePlatformAdmin);
@@ -216,7 +216,7 @@ organizationsRouter.patch('/:id/modules', asyncHandler(async (req, res) => {
 organizationsRouter.get('/:id/sections', asyncHandler(async (req, res) => {
   const org = (await query(`SELECT sections FROM organizations WHERE id = $1`, [req.params.id])).rows[0];
   if (!org) return res.status(404).json({ error: 'Organization not found' });
-  res.json({ catalog: SECTION_LABELS, sections: org.sections });
+  res.json({ catalog: SECTION_LABELS, sections: parseSections(org.sections) });
 }));
 
 organizationsRouter.patch('/:id/sections', asyncHandler(async (req, res) => {
@@ -229,7 +229,7 @@ organizationsRouter.patch('/:id/sections', asyncHandler(async (req, res) => {
   const { rows } = await query(`UPDATE organizations SET sections = $1 WHERE id = $2 RETURNING sections`, [sections, req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
   await audit(req, { area: 'platform', action: 'org.sections', organizationId: req.params.id, entity: 'school', entityId: req.params.id, detail: { sections } });
-  res.json({ sections: rows[0].sections });
+  res.json({ sections: parseSections(rows[0].sections) });
 }));
 
 organizationsRouter.patch('/:id/status', asyncHandler(async (req, res) => {

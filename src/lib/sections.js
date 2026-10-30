@@ -3,10 +3,17 @@ import { SECTION_KEYS } from './curriculum.js';
 
 // Which sections (PRIMARY / JUNIOR / SENIOR) a school uses. Set by the platform admin; everything else
 // (classes, teachers, subjects, the catalogue) only offers these.
+// node-postgres hands back a Postgres enum array as TEXT ("{PRIMARY,JUNIOR}"), not as a list, so every place that
+// reads organizations.sections goes through this.
+export function parseSections(v) {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.replace(/[{}"]/g, '').split(',') : [];
+  const clean = list.map((s) => String(s).trim().toUpperCase()).filter((s) => SECTION_KEYS.includes(s));
+  return clean.length ? SECTION_KEYS.filter((s) => clean.includes(s)) : SECTION_KEYS;
+}
+
 export async function enabledSections(orgId) {
   const { rows } = await query(`SELECT sections FROM organizations WHERE id = $1`, [orgId]);
-  const s = rows[0]?.sections;
-  return Array.isArray(s) && s.length ? s : SECTION_KEYS;
+  return parseSections(rows[0]?.sections);
 }
 
 // null when fine, otherwise a message for the person.

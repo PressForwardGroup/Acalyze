@@ -1,3 +1,4 @@
+import { parseSections } from '../lib/sections.js';
 import { Router } from 'express';
 import { query } from '../lib/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
@@ -17,7 +18,7 @@ settingsRouter.get('/', asyncHandler(async (req, res) => {
   const rate = org.rate_per_student == null ? null : Number(org.rate_per_student);
   res.json({
     school: { name: org.name, motto: org.motto, logoUrl: org.logo_url, reportCardTemplate: org.report_card_template,
-              defaultGradingScheme: org.default_grading_scheme, code: org.org_code, sections: org.sections || ['PRIMARY', 'JUNIOR', 'SENIOR'],
+              defaultGradingScheme: org.default_grading_scheme, code: org.org_code, sections: parseSections(org.sections),
               support: { email: org.support_email, phone: org.support_phone, note: org.support_note } },
     subscription: {
       planName: org.plan_name, features: featuresForOrgRow(org), allPlans: Object.keys(PLANS), ratePerStudent: rate, billingCycle: org.billing_cycle, activeStudents: students,

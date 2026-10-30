@@ -4,7 +4,7 @@ import { download } from './reportcard.js';
 
 let SECTIONS = ['PRIMARY', 'JUNIOR', 'SENIOR'];
 // A school only sees the sections the platform admin switched on for it.
-const useSections = async () => { try { SECTIONS = (await api('/school-settings')).school.sections || SECTIONS; } catch { /* keep all */ } };
+const useSections = async () => { try { const s = (await api('/school-settings')).school.sections; if (Array.isArray(s) && s.length) SECTIONS = s; } catch { /* keep all */ } };
 const opt = (rows, val = (r) => r.id, label = (r) => r.name, sel) => rows.map((r) => `<option value="${esc(val(r))}" ${val(r) === sel ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
 const campusField = (centers) => centers.length > 1 ? `<div><label class="f" for="center">Campus</label><select class="i" id="center">${opt(centers)}</select></div>` : '';
 const val = (el, id) => ($('#' + id, el)?.value ?? '').trim();
