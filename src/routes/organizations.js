@@ -10,6 +10,8 @@ import { audit } from '../lib/audit.js';
 import { passwordProblem } from '../lib/password.js';
 import { MODULES, normalizeModules } from '../lib/modules.js';
 import { featuresForOrgRow } from '../lib/plans.js';
+import { SECTION_KEYS, SECTION_LABELS } from '../lib/curriculum.js';
+import { normalizeSections } from '../lib/sections.js';
 
 export const organizationsRouter = Router();
 organizationsRouter.use(requireAuth, requirePlatformAdmin);
@@ -69,10 +71,14 @@ organizationsRouter.post('/registrations/:id/approve', asyncHandler(async (req, 
 
   const scheme = /cbc/i.test(r.system_used || '') && !/8-4-4/i.test(r.system_used || '') ? 'cbc' : '844';
 
+  let sections = SECTION_KEYS;                 // the platform admin can choose which sections this school uses while approving
+  if (req.body?.sections !== undefined) {
+    try { sections = normalizeSections(req.body.sections); } catch (e) { return res.status(400).json({ error: e.message }); }
+  }
   const org = await query(
-    `INSERT INTO organizations (name, slug, org_code, status, default_grading_scheme, support_email, support_phone)
-     VALUES ($1,$2,$3,'active',$4,$5,$6) RETURNING *`,
-    [r.school_name, slug, code, scheme, (r.contact_email || '').trim().toLowerCase() || null, r.contact_phone || null]
+    `INSERT INTO organizations (name, slug, org_code, status, default_grading_scheme, support_email, support_phone, sections)
+     VALUES ($1,$2,$3,'active',$4,$5,$6,$7) RETURNING *`,
+    [r.school_name, slug, code, scheme, (r.contact_email || '').trim().toLowerCase() || null, r.contact_phone || null, sections]
   );
 
   const center = await query(
@@ -204,6 +210,26 @@ organizationsRouter.patch('/:id/modules', asyncHandler(async (req, res) => {
   if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
   await audit(req, { area: 'platform', action: 'org.modules', organizationId: req.params.id, entity: 'school', entityId: req.params.id, detail: { modules } });
   res.json({ custom: !!rows[0].modules, modules: featuresForOrgRow(rows[0]) });
+}));
+
+// Which sections a school uses. A school only ever sees these (classes, teachers, subjects).
+organizationsRouter.get('/:id/sections', asyncHandler(async (req, res) => {
+  const org = (await query(`SELECT sections FROM organizations WHERE id = $1`, [req.params.id])).rows[0];
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  res.json({ catalog: SECTION_LABELS, sections: org.sections });
+}));
+
+organizationsRouter.patch('/:id/sections', asyncHandler(async (req, res) => {
+  let sections;
+  try { sections = normalizeSections(req.body?.sections); } catch (e) { return res.status(400).json({ error: e.message }); }
+  // Switching a section off must not hide classes that already exist in it.
+  const inUse = (await query(`SELECT DISTINCT section::text AS s FROM classes WHERE organization_id = $1`, [req.params.id])).rows.map((r) => r.s);
+  const stuck = inUse.filter((s) => !sections.includes(s));
+  if (stuck.length) return res.status(409).json({ error: `This school already has classes in ${stuck.join(', ')}. Remove or move them before switching that section off.` });
+  const { rows } = await query(`UPDATE organizations SET sections = $1 WHERE id = $2 RETURNING sections`, [sections, req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
+  await audit(req, { area: 'platform', action: 'org.sections', organizationId: req.params.id, entity: 'school', entityId: req.params.id, detail: { sections } });
+  res.json({ sections: rows[0].sections });
 }));
 
 organizationsRouter.patch('/:id/status', asyncHandler(async (req, res) => {

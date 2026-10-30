@@ -3,6 +3,7 @@ import { query } from '../lib/db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { scope, resolveCenter, schemeForGrade } from '../lib/scope.js';
+import { sectionProblem } from '../lib/sections.js';
 
 export const classesRouter = Router();
 classesRouter.use(requireAuth);
@@ -20,6 +21,8 @@ classesRouter.get('/', requireRole('admin', 'teacher'), asyncHandler(async (req,
 classesRouter.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
   const { name, grade, stream, section, academicYear, centerId, gradingScheme } = req.body;
   if (!name || !grade || !section) return res.status(400).json({ error: 'name, grade and section are required' });
+  const secProblem = await sectionProblem(req.auth.organizationId, section);
+  if (secProblem) return res.status(400).json({ error: secProblem });
   const center = await resolveCenter(req, centerId);
   if (!center) return res.status(400).json({ error: 'Choose which campus this class belongs to (centerId).' });
   const org = await query(`SELECT default_grading_scheme FROM organizations WHERE id = $1`, [req.auth.organizationId]);

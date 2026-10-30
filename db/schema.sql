@@ -56,6 +56,7 @@ CREATE TABLE organizations (
   org_code              text NOT NULL UNIQUE,       -- short code used as the student-ID prefix, e.g. "RVS"
   status                org_status NOT NULL DEFAULT 'pending',
   default_grading_scheme grading_scheme NOT NULL DEFAULT 'cbc',
+  sections              section[] NOT NULL DEFAULT '{PRIMARY,JUNIOR,SENIOR}',   -- the sections this school uses
   report_card_template  report_card_template NOT NULL DEFAULT 'classic',
   -- Pricing: set by the platform admin once agreed with the school (see Billing mockup).
   modules               jsonb,                      -- chosen modules; NULL = follow the plan
@@ -184,6 +185,15 @@ CREATE TABLE subjects (
   UNIQUE (center_id, name)
 );
 CREATE INDEX idx_subjects_org ON subjects(organization_id);
+
+CREATE TABLE subject_aliases (                   -- short names people use for subjects, saved once ("Kisw", "SCIE&TECNO")
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  alias_key       text NOT NULL,                              -- normalised: upper case, letters and digits only
+  alias_text      text NOT NULL,                              -- as the person wrote it
+  subject_id      uuid NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (organization_id, alias_key)
+);
 
 CREATE TABLE class_teachers (
   class_id    uuid NOT NULL REFERENCES classes(id) ON DELETE CASCADE,

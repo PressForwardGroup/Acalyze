@@ -2,7 +2,9 @@ import { api } from '../api.js';
 import { esc, $, $$, toast, run, table, pill, modal, confirmBox, copy, fmtDate, num, stat, initials, band, bandColor, bandPill, bandTone, BAND_LABELS } from '../ui.js';
 import { download } from './reportcard.js';
 
-const SECTIONS = ['PRIMARY', 'JUNIOR', 'SENIOR'];
+let SECTIONS = ['PRIMARY', 'JUNIOR', 'SENIOR'];
+// A school only sees the sections the platform admin switched on for it.
+const useSections = async () => { try { SECTIONS = (await api('/school-settings')).school.sections || SECTIONS; } catch { /* keep all */ } };
 const opt = (rows, val = (r) => r.id, label = (r) => r.name, sel) => rows.map((r) => `<option value="${esc(val(r))}" ${val(r) === sel ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
 const campusField = (centers) => centers.length > 1 ? `<div><label class="f" for="center">Campus</label><select class="i" id="center">${opt(centers)}</select></div>` : '';
 const val = (el, id) => ($('#' + id, el)?.value ?? '').trim();
@@ -10,6 +12,7 @@ const locked = (el, ctx, title, what) => { el.innerHTML = `${ctx.bar(title)}<div
 
 // ---------- Classes ----------
 async function classes(el, ctx) {
+  await useSections();
   const [cls, teachers, centers] = await Promise.all([api('/classes'), api('/teachers'), api('/centers')]);
   el.innerHTML = `${ctx.bar('Classes', 'A class is one stream, e.g. "Form 3 West" or "Grade 8 Blue"')}
   <div class="card"><h2 style="margin-bottom:12px">Add a class</h2><div class="form-grid">
@@ -30,6 +33,7 @@ async function classes(el, ctx) {
 
 // ---------- Subjects ----------
 async function subjects(el, ctx) {
+  await useSections();
   const [subs, centers] = await Promise.all([api('/subjects'), api('/centers')]);
   el.innerHTML = `${ctx.bar('Subjects', 'Include the report-form code (e.g. 121) so it prints on the card')}
   <div class="card"><div class="form-grid">
@@ -37,13 +41,18 @@ async function subjects(el, ctx) {
     <div><label class="f" for="code">Code</label><input class="i" id="code" placeholder="121"></div>
     <div><label class="f" for="section">Section</label><select class="i" id="section"><option value="">All sections</option>${SECTIONS.map((s) => `<option>${s}</option>`).join('')}</select></div>${campusField(centers)}</div>
     <p class="sm mut">Maths, Biology, Physics and Chemistry are marked as sciences automatically (they use their own 8-4-4 grade boundaries).</p>
-    <div class="row"><button class="btn primary" id="add">Add subject</button><button class="btn" id="defaults">Add the standard 8-4-4 subjects</button></div></div>
+    <div class="row"><button class="btn primary" id="add">Add subject</button><button class="btn" id="defaults">Add the standard 8-4-4 subjects</button><button class="btn gold" id="official">Add the official KNEC / KICD subjects for my sections</button></div>
+    <p class="sm mut">Subject codes apply to the senior section only. Short names (Eng, Kisw, Scie&amp;Tecno) are recognised on import; anything unclear is asked once and remembered.</p></div>
   <div class="card pad0" style="margin-top:18px">${table(['Subject', 'Code', 'Section', 'Type', ''], subs.map((s) => [`<b>${esc(s.name)}</b>`, esc(s.code || '—'), esc(s.section || 'All'), s.is_science ? pill('Science', 'ok') : '', `<button class="btn sm danger" data-del="${s.id}">Delete</button>`]), { empty: 'No subjects yet.' })}</div>`;
   const add = (b, body) => run(b, async () => { await api('/subjects', { method: 'POST', body }); });
   $('#add', el).onclick = (e) => run(e.currentTarget, async () => {
     if (!val(el, 'name')) return toast('Enter the subject name.', 'bad');
     await api('/subjects', { method: 'POST', body: { name: val(el, 'name'), code: val(el, 'code'), section: val(el, 'section') || null, centerId: val(el, 'center') || undefined } });
     toast('Subject added', 'ok'); subjects(el, ctx);
+  });
+  $('#official', el).onclick = (e) => run(e.currentTarget, async () => {
+    const r = await api('/subjects/seed-curriculum', { method: 'POST', body: { centerId: val(el, 'center') || undefined } });
+    toast(r.added ? `${r.added} official subjects added for ${r.sections.join(', ')}` : 'Your official subjects are already all here.', 'ok'); subjects(el, ctx);
   });
   $('#defaults', el).onclick = (e) => run(e.currentTarget, async () => {
     const have = new Set(subs.map((s) => s.name.toLowerCase()));
@@ -56,6 +65,7 @@ async function subjects(el, ctx) {
 
 // ---------- Teachers ----------
 async function teachers(el, ctx) {
+  await useSections();
   const [list, cls, subs, centers] = await Promise.all([api('/teachers'), api('/classes'), api('/subjects'), api('/centers')]);
   const clsName = Object.fromEntries(cls.map((c) => [c.id, c.name])), subName = Object.fromEntries(subs.map((s) => [s.id, s.name]));
   el.innerHTML = `${ctx.bar('Teachers', 'Each teacher signs in with their own email')}

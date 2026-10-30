@@ -42,9 +42,11 @@ async function registrations(el, ctx) {
       const form = modal(`<h3>Set up ${esc(reg.school_name)}</h3><p class="sm mut">Choose how the school's admin signs in. The email starts as the school's own; change it if you want.</p>
         <label class="f" for="ae">Login email</label><input class="i" id="ae" type="email" value="${esc(reg.contact_email || '')}" autocomplete="off">
         <label class="f" for="ap" style="margin-top:12px">Password</label><input class="i" id="ap" type="text" placeholder="Type one (8+ characters with a letter and a number), or leave empty for a random one" autocomplete="off">
+        <div style="margin-top:14px"><b>Sections this school uses</b><p class="sm mut">They will only see these. You can change it later under Schools, Sections.</p>
+          ${[['PRIMARY', 'Primary (PP1 to Grade 6)'], ['JUNIOR', 'Junior school (Grade 7 to 9)'], ['SENIOR', 'Senior school (Form 1-4 and Grade 10-12)']].map(([k, l]) => `<label class="row" style="gap:8px;padding:4px 0"><input type="checkbox" data-s="${k}" checked> ${l}</label>`).join('')}</div>
         <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Approve &amp; set up</button></div>`);
       $('#go', form.el).onclick = (e) => run(e.currentTarget, async () => {
-      const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST', body: { adminEmail: $('#ae', form.el).value.trim(), adminPassword: $('#ap', form.el).value } });
+      const r = await api(`/organizations/registrations/${b.dataset.ok}/approve`, { method: 'POST', body: { adminEmail: $('#ae', form.el).value.trim(), adminPassword: $('#ap', form.el).value, sections: $$('[data-s]', form.el).filter((c) => c.checked).map((c) => c.dataset.s) } });
       form.close();
       const msg = `Welcome to Acalyze! Your school workspace is ready.\nSign in at ${location.origin}/app/\nEmail: ${r.adminLogin.email}\nTemporary password: ${r.adminLogin.password}\nPlease change your password after signing in.`;
       modal(`<h3>${esc(r.organization.name)} is set up</h3>${r.emailed ? `<div class="notice ok">The sign-in details were emailed to ${esc(r.emailedTo)}.</div>` : ''}<p class="sm mut">${r.emailed ? 'You can also copy them here.' : 'Send these sign-in details to the school.'} The password is shown only once.</p><textarea class="i" readonly style="min-height:130px">${esc(msg)}</textarea>
@@ -72,6 +74,20 @@ async function modulesModal(o, done) {
       $('#go', m).onclick = (e) => run(e.currentTarget, async () => {
         const modules = $('#cu', m).checked ? Object.fromEntries($$('[data-m]', m).map((c) => [c.dataset.m, c.checked])) : null;
         await api(`/organizations/${o.id}/modules`, { method: 'PATCH', body: { modules } }); close(); toast('Modules saved', 'ok'); done?.();
+      });
+    } });
+}
+
+// ---------- sections: which parts of the school this school uses ----------
+async function sectionsModal(o, done) {
+  const cur = await api(`/organizations/${o.id}/sections`);
+  modal(`<h3>Sections for ${esc(o.name)}</h3><p class="sm mut">Tick only the sections this school runs. They see only these when adding classes, teachers and subjects.</p>
+    ${Object.entries(cur.catalog).map(([k, label]) => `<label class="row" style="gap:8px;padding:6px 0"><input type="checkbox" data-s="${k}" ${cur.sections.includes(k) ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+    <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save</button></div>`, {
+    onMount: (m, close) => {
+      $('#go', m).onclick = (e) => run(e.currentTarget, async () => {
+        const sections = $$('[data-s]', m).filter((c) => c.checked).map((c) => c.dataset.s);
+        await api(`/organizations/${o.id}/sections`, { method: 'PATCH', body: { sections } }); close(); toast('Sections saved', 'ok'); done?.();
       });
     } });
 }
@@ -124,10 +140,11 @@ async function schools(el, ctx) {
   const list = await api('/organizations');
   el.innerHTML = `${ctx.bar('Schools', `${list.length} on the platform`)}
   <div class="card pad0">${table(['School', 'Students', 'Plan', 'Price / student', 'Status', 'Latest invoice', ''], list.map((o) => [`<b>${esc(o.name)}</b><div class="sm mut">${esc(o.slug)} · code ${esc(o.org_code)}</div>`, o.student_count.toLocaleString(), o.plan_name ? esc(o.plan_name) : pill('Not set', 'warn'), o.rate_per_student != null ? kes(o.rate_per_student) : '—', statusPill(o.status), invPill(o.latest_invoice_status),
-    `<div class="row" style="gap:6px"><button class="btn sm" data-plan="${o.id}">Plan & price</button><button class="btn sm" data-mod="${o.id}">Modules</button><button class="btn sm" data-inv="${o.id}">Invoices</button><button class="btn sm" data-view="${o.id}">Open school</button><button class="btn sm ${o.status === 'active' ? 'danger' : ''}" data-st="${o.id}">${o.status === 'active' ? 'Suspend' : 'Activate'}</button></div>`]), { empty: 'No schools yet. Approve a registration to add the first one.' })}</div>`;
+    `<div class="row" style="gap:6px"><button class="btn sm" data-plan="${o.id}">Plan & price</button><button class="btn sm" data-mod="${o.id}">Modules</button><button class="btn sm" data-sec="${o.id}">Sections</button><button class="btn sm" data-inv="${o.id}">Invoices</button><button class="btn sm" data-view="${o.id}">Open school</button><button class="btn sm ${o.status === 'active' ? 'danger' : ''}" data-st="${o.id}">${o.status === 'active' ? 'Suspend' : 'Activate'}</button></div>`]), { empty: 'No schools yet. Approve a registration to add the first one.' })}</div>`;
   const by = (id) => list.find((x) => x.id === id), refresh = () => schools(el, ctx);
   $$('[data-plan]', el).forEach((b) => (b.onclick = () => planModal(by(b.dataset.plan), refresh)));
   $$('[data-mod]', el).forEach((b) => (b.onclick = () => modulesModal(by(b.dataset.mod), refresh)));
+  $$('[data-sec]', el).forEach((b) => (b.onclick = () => sectionsModal(by(b.dataset.sec), refresh)));
   $$('[data-inv]', el).forEach((b) => (b.onclick = () => invoicesModal(by(b.dataset.inv), refresh)));
   $$('[data-view]', el).forEach((b) => (b.onclick = () => viewSchool(by(b.dataset.view))));
   $$('[data-st]', el).forEach((b) => (b.onclick = async () => {

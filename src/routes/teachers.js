@@ -4,6 +4,7 @@ import { hashPassword } from '../lib/auth.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { scope, resolveCenter } from '../lib/scope.js';
+import { sectionProblem, enabledSections } from '../lib/sections.js';
 
 export const teachersRouter = Router();
 teachersRouter.use(requireAuth);
@@ -74,6 +75,8 @@ teachersRouter.post('/', requireRole('admin'), asyncHandler(async (req, res) => 
     pairs = [{ classId: req.body.classId, subjectId: req.body.subjectId }];
   }
   if (!fullName || !section) return res.status(400).json({ error: 'Full name and section are required' });
+  const secProblem = await sectionProblem(req.auth.organizationId, section);
+  if (secProblem) return res.status(400).json({ error: secProblem });
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email for this teacher — it is their login.' });
   if (!password || password.length < 6) return res.status(400).json({ error: 'The default password must be at least 6 characters.' });
 
@@ -137,6 +140,7 @@ teachersRouter.post('/bulk', requireRole('admin'), asyncHandler(async (req, res)
   let added = 0;
   const skipped = [];
   const teacherIdByName = new Map();
+  const usedSections = await enabledSections(req.auth.organizationId);
 
   for (let i = start; i < lines.length; i++) {
     const [name, sectionRaw, className, subjectName, phone] = lines[i];
@@ -145,6 +149,7 @@ teachersRouter.post('/bulk', requireRole('admin'), asyncHandler(async (req, res)
     if (!['PRIMARY', 'JUNIOR', 'SENIOR'].includes(section)) {
       skipped.push(`Row ${i + 1}: section must be PRIMARY, JUNIOR or SENIOR (got "${sectionRaw}")`); continue;
     }
+    if (!usedSections.includes(section)) { skipped.push(`Row ${i + 1}: this school does not use the ${section} section`); continue; }
     let teacherId = teacherIdByName.get(name.toLowerCase());
     if (!teacherId) {
       const existing = await query(`SELECT id FROM teachers WHERE organization_id = $1 AND lower(full_name) = lower($2)`, [req.auth.organizationId, name.trim()]);
