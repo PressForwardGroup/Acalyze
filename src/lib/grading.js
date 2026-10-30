@@ -37,24 +37,6 @@ export function gradeFor(scheme, percent, { isScience = false, formLevel = null 
   return { grade: levels[idx], points: idx + 1, index: idx };
 }
 
-// A typed level (ME1, B+) has no mark, but the mean and ranking need one. Use the middle of the level's real KNEC range
-// (ME1 = 58-74% -> 66%), and slide smoothly between levels for averaged points. This replaces points / top * 100, which called ME1 75%.
-function bandMids(bounds, integerBands) {
-  return bounds.map((lo, i) => {
-    const hi = i + 1 < bounds.length ? (integerBands ? bounds[i + 1] - 1 : bounds[i + 1]) : 100;
-    return ((i === 0 && integerBands ? 1 : lo) + hi) / 2;
-  });
-}
-const MIDS_CBC = bandMids(BOUNDS_CBC, true);
-const MIDS_844 = bandMids(BOUNDS_844_OTHER, false);
-export function pointsToPercent(scheme, points) {
-  if (points == null || Number.isNaN(Number(points))) return null;
-  const mids = scheme === 'cbc' ? MIDS_CBC : MIDS_844;
-  const f = Math.min(Math.max(Number(points) - 1, 0), mids.length - 1);
-  const i = Math.min(Math.floor(f), mids.length - 2);
-  return Math.round((mids[i] + (mids[i + 1] - mids[i]) * (f - i)) * 100) / 100;
-}
-
 export function isValidGrade(scheme, grade) {
   return levelsFor(scheme).includes(grade);
 }

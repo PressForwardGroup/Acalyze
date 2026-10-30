@@ -1,6 +1,5 @@
 import { query } from './db.js';
 import { computeExamResults } from './results.js';
-import { pointsToPercent } from './grading.js';
 
 // "Students to watch": early-warning flags from each student's last few exams.
 // This is NOT a prediction model. It applies plain, explainable rules, and every
@@ -76,8 +75,8 @@ export async function riskReport({ organizationId, examId, limit = 150 }) {
     const perExam = [];
     for (const e of exams) perExam.push({ exam: e, data: await computeExamResults({ organizationId, examId: e.id, classId: c.id }) });
     if (!perExam[0].data) continue;
-    const gScheme = c.grading_scheme;
-    const scoreOf = (r) => (!r || !r.eligible || r.meanPoints == null ? null : r.mean != null ? r.mean : pointsToPercent(gScheme, r.meanPoints));
+    const topPts = c.grading_scheme === 'cbc' ? 8 : 12;
+    const scoreOf = (r) => (!r || !r.eligible || r.meanPoints == null ? null : r.mean != null ? r.mean : (r.meanPoints / topPts) * 100);
     const byExam = perExam.map(({ exam, data }) => ({ exam, rows: new Map((data?.rows || []).map((r) => [r.student.id, r])) }));
 
     for (const row of perExam[0].data.rows) {
