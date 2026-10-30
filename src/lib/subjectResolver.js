@@ -7,6 +7,7 @@
 //   unknown    nothing close - ask, and let the person pick or add the subject
 // Whatever the person answers is saved as an alias (subject_aliases), so the question is asked once.
 import { catalogueFor, bandsOfSection, bandFor, BAND_SECTION } from './curriculum.js';
+import { PAPERS, resolvePart } from './papers.js';
 
 // "SCIE&TECNO", "scie & tecno" and "Scie-Tecno" all become SCIETECNO. AND / OF are dropped so "&" and "and" agree.
 export function normaliseKey(s) {
@@ -40,6 +41,13 @@ export function buildIndex({ sections, saved = [] } = {}) {
     for (const p of r.parts) put(p, { kind: 'part', name: p, parent: r.name, bands: r.partBands.filter((b) => r.bands.includes(b)) });
     for (const [t, bs] of Object.entries(r.extraAliasBands)) put(t, { kind: 'subject', name: r.name, bands: bs.filter((b) => r.bands.includes(b)) });
   }
+  // The KNEC paper structure of English and Kiswahili (junior and senior 8-4-4): header -> which paper it is.
+  const live = new Set(catalogueFor(sections).flatMap((r) => r.bands.map((b) => `${r.name}|${b}`)));
+  for (const [subject, byBand] of Object.entries(PAPERS)) for (const [band, papers] of Object.entries(byBand)) {
+    if (!live.has(`${subject}|${band}`)) continue;
+    for (const p of papers) for (const a of [...p.aliases, ...p.sections.flatMap((s) => s.aliases)])
+      put(a, { kind: 'part', name: a.toUpperCase(), parent: subject, bands: [band] });
+  }
   const custom = new Map(saved.map((a) => [normaliseKey(a.alias), a.subject]));
   return { map, custom };
 }
@@ -52,6 +60,7 @@ function scopeBands({ section, band, className } = {}) {
 }
 const inScope = (e, bands) => !bands || e.bands.some((b) => bands.includes(b));
 const named = (e) => (e.kind === 'part' ? { part: e.name, subject: e.parent } : { subject: e.name });
+const paperInfo = (p) => ({ no: p.no, code: p.code, name: p.name, max: p.max, confirmed: p.confirmed });
 
 export function resolveSubject(header, index, scope = {}) {
   const key = normaliseKey(header);
@@ -63,7 +72,15 @@ export function resolveSubject(header, index, scope = {}) {
 
   const hits = (index.map.get(key) || []).filter((e) => inScope(e, bands));
   const distinct = [...new Map(hits.map((e) => [`${e.kind}:${e.parent || ''}:${e.name}`, e])).values()];
-  if (distinct.length === 1) return { ...out, status: distinct[0].kind === 'part' ? 'part' : 'matched', via: 'name', ...named(distinct[0]) };
+  if (distinct.length === 1) {
+    const e = distinct[0];
+    const res = { ...out, status: e.kind === 'part' ? 'part' : 'matched', via: 'name', ...named(e) };
+    if (e.kind === 'part' && bands && bands.length === 1) {                 // which paper it is depends on the class: Composition is Paper 2 in junior, Paper 3 in senior
+      const hit = resolvePart(e.parent, header, bands[0]);
+      if (hit) { res.paper = paperInfo(hit.paper); if (hit.section) res.section = { name: hit.section.name, max: hit.section.max }; }
+    }
+    return res;
+  }
   if (distinct.length > 1) return { ...out, status: 'ask', suggestions: distinct.map((e) => e.parent || e.name) };
 
   // Close matches: a clear prefix ("kisw" -> KISWAHILI) or a one/two-letter slip ("scince").

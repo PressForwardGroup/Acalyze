@@ -1,5 +1,5 @@
 import { query } from './db.js';
-import { computeStudentResult, remarkFor } from './grading.js';
+import { computeStudentResult, remarkFor, pointsToPercent } from './grading.js';
 import { codeFor } from './curriculum.js';
 import { formLevelOf } from './scope.js';
 
@@ -66,8 +66,8 @@ export async function computeExamResults({ organizationId, examId, classId }) {
   });
 
   // Ranking key: mean %, or mean points scaled to 0-100 if every mark was a direct level.
-  const topPts = scheme === 'cbc' ? 8 : 12;
-  const key = (r) => (r.mean != null ? r.mean : (r.meanPoints / topPts) * 100);
+  const gScheme = scheme;
+  const key = (r) => (r.mean != null ? r.mean : pointsToPercent(gScheme, r.meanPoints));
   const eligible = rows.filter((r) => r.eligible && r.meanPoints != null);
   const overall = rank(eligible, key);
   eligible.forEach((r) => { r.position = overall.get(r); r.outOf = eligible.length; });
@@ -82,7 +82,7 @@ export async function computeExamResults({ organizationId, examId, classId }) {
   const subjectPosition = {};
   for (const sub of subjects.rows) {
     const withMark = rows.map((r) => ({ r, m: r.marks.find((x) => x.subjectId === sub.id) })).filter((x) => x.m);
-    const sk = (x) => (x.m.percent != null ? Number(x.m.percent) : (x.m.points / topPts) * 100);
+    const sk = (x) => (x.m.percent != null ? Number(x.m.percent) : pointsToPercent(gScheme, x.m.points));
     const rk = rank(withMark, sk);
     withMark.forEach((x) => { (subjectPosition[x.r.student.id] ??= {})[sub.id] = rk.get(x); });
   }
