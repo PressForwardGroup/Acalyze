@@ -1,6 +1,8 @@
 import { api, session } from '../api.js';
 import { esc, $, $$, kes, fmtDate, toast, run, table, stat, pill, modal, confirmBox, copy, barChart, hbarChart, lineChart, donut, color } from '../ui.js';
 import { resets } from './account.js';
+import { hello, countTone, countSub, waitingBar, tiles, reports } from './home.js';
+import { bandVar } from '../ui.js';
 
 const PLAN_INFO = {
   'Analytics': { suggest: 150, has: ['Grading & report cards', 'Admin analytics dashboard', 'Excel import, early-warning list, school calendar'] },
@@ -13,19 +15,29 @@ const invPill = (s) => (!s ? '<span class="mut">—</span>' : s === 'paid' ? pil
 
 // ---------- Overview ----------
 async function overview(el, ctx) {
-  const [s, orgs] = await Promise.all([api('/organizations/stats/summary'), api('/organizations')]);
-  const t = s.totals;
+  const [s, orgs, bk, pw] = await Promise.all([api('/organizations/stats/summary'), api('/organizations'), api('/bookings/count').catch(() => ({ n: 0 })), api('/password-requests').catch(() => [])]);
+  const t = s.totals, regs = s.pendingRegistrations || 0, books = bk.n || 0, resetsN = pw.length || 0, waiting = regs + books + resetsN;
   let cum = 0; const growth = s.growth.map((g) => ({ label: g.month, v: (cum += g.schools) }));
   const money = Object.fromEntries(s.invoices.map((i) => [i.status, i]));
-  el.innerHTML = `${ctx.bar('Platform overview', 'Every school on Acalyze')}
-  <div class="grid g4 fade">${stat('Active schools', t.active_schools, { tone: 'green', sub: t.suspended_schools ? `${t.suspended_schools} suspended` : '' })}${stat('Students', t.students.toLocaleString(), { tone: 'navy' })}${stat('Teachers & parents', `${t.teachers.toLocaleString()} · ${t.parents.toLocaleString()}`, { tone: 'gold' })}${stat('Billing estimate (per cycle)', kes(t.estimated_billing), { tone: 'red', sub: 'rate × students, all schools' })}</div>
-  ${s.pendingRegistrations ? `<div class="notice" style="margin-top:16px"><b>${s.pendingRegistrations}</b> school${s.pendingRegistrations > 1 ? 's are' : ' is'} waiting for approval. <a href="#/app/registrations"><b>Review now</b></a></div>` : ''}
+  const overdue = Math.round(money.overdue?.total || 0);
+  const todo = [
+    regs > 0 && ['✓', 'Approve new schools', `${regs} waiting`, 'registrations', regs],
+    books > 0 && ['▤', 'Confirm bookings', `${books} new request${books === 1 ? '' : 's'}`, 'bookings', books],
+    resetsN > 0 && ['🔑', 'Reset passwords', `${resetsN} waiting`, 'resets', resetsN],
+    overdue > 0 && ['KSh', 'Chase overdue invoices', `${kes(overdue)} overdue`, 'billing'],
+    ['⌂', 'See all schools', `${t.active_schools} active`, 'schools'],
+  ].filter(Boolean).slice(0, 4);
+  el.innerHTML = `${ctx.bar(hello(ctx.me, 'Acalyze'), 'Every school on Acalyze')}
+  ${waiting > 0 ? waitingBar(`${waiting} ${waiting === 1 ? 'thing is' : 'things are'} waiting`, `#/app/${regs ? 'registrations' : books ? 'bookings' : 'resets'}`) : ''}
+  <h2 class="sect">Needs attention</h2><div class="grid g4 fade">${stat('Schools waiting for approval', regs, { tone: countTone(regs), sub: countSub(regs) })}${stat('New booking requests', books, { tone: countTone(books), sub: countSub(books) })}${stat('Password resets', resetsN, { tone: countTone(resetsN), sub: countSub(resetsN) })}${stat('Overdue invoices', kes(overdue), { tone: overdue > 0 ? 'b2' : 'b5', sub: overdue > 0 ? 'At risk' : 'All clear' })}</div>
+  ${tiles(todo)}
+  <h2 class="sect">The platform at a glance</h2><div class="grid g4 fade">${stat('Active schools', t.active_schools, { sub: t.suspended_schools ? `${t.suspended_schools} suspended` : '' })}${stat('Students', t.students.toLocaleString())}${stat('Teachers & parents', `${t.teachers.toLocaleString()} · ${t.parents.toLocaleString()}`)}${stat('Billing estimate (per cycle)', kes(t.estimated_billing), { sub: 'rate × students, all schools' })}</div>
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h2 style="margin-bottom:10px">Schools over time</h2>${growth.length ? lineChart(growth.map((g) => g.label), [{ name: 'Schools', values: growth.map((g) => g.v) }], { title: 'Total schools by month' }) : '<div class="empty">No schools yet.</div>'}</div>
     <div class="card"><h2 style="margin-bottom:10px">Biggest schools (students)</h2>${hbarChart(s.topSchools.map((x) => ({ label: x.name, value: x.students })), { title: 'Students per school' })}</div></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h2 style="margin-bottom:10px">Schools by plan</h2>${donut(s.byPlan.map((p) => ({ label: p.plan, value: p.schools })), { title: 'Schools by plan' })}</div>
-    <div class="card"><h2 style="margin-bottom:10px">Invoices</h2>${['paid', 'pending', 'overdue'].some((k) => money[k]) ? barChart(['paid', 'pending', 'overdue'].map((k, i) => ({ label: k, value: Math.round(money[k]?.total || 0), color: ['var(--c3)', 'var(--c2)', 'var(--c5)'][i] })), { title: 'Invoice totals by status', height: 190 }) + `<div class="legend" style="margin-top:6px">${['paid', 'pending', 'overdue'].map((k) => `<span>${k}: ${kes(money[k]?.total || 0)} (${money[k]?.n || 0})</span>`).join('')}</div>` : '<div class="empty">No invoices yet. Create one from the Schools page.</div>'}</div></div>`;
+    <div class="card"><h2 style="margin-bottom:10px">Invoices</h2>${['paid', 'pending', 'overdue'].some((k) => money[k]) ? barChart(['paid', 'pending', 'overdue'].map((k, i) => ({ label: k, value: Math.round(money[k]?.total || 0), color: [bandVar(4), bandVar(3), bandVar(1)][i] })), { title: 'Invoice totals by status', height: 190 }) + `<div class="legend" style="margin-top:6px">${['paid', 'pending', 'overdue'].map((k) => `<span>${k}: ${kes(money[k]?.total || 0)} (${money[k]?.n || 0})</span>`).join('')}</div>` : '<div class="empty">No invoices yet. Create one from the Schools page.</div>'}</div></div>`;
 }
 
 // ---------- Registrations ----------

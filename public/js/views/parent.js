@@ -3,8 +3,38 @@ import { esc, $, $$, toast, lineChart, modal, run } from '../ui.js';
 import { renderCard, printHtml, cardOptions, termFromExam } from './reportcard.js';
 import { messages } from './chat.js';
 import * as school from './school.js';
+import { hello, dateLine, waitingBar, tiles } from './home.js';
 import { printReceipt } from './school.js';
-import { stat, kes, num, fmtDate, pill, table } from '../ui.js';
+import { stat, kes, num, fmtDate, pill, table, initials, band, bandPill, bandTone, BAND_LABELS } from '../ui.js';
+
+// ---------- Home ----------
+async function overview(el, ctx) {
+  const [kids, exams, unread] = await Promise.all([api('/students/mine'), api('/exams'), ctx.features.chat !== false ? api('/chat/unread').catch(() => null) : null]);
+  if (!kids.length) { el.innerHTML = `${ctx.bar(hello(ctx.me, 'there'), dateLine(ctx.me))}<div class="card empty">No children are linked to your account yet.<br>Please contact your child's school.</div>`; return; }
+  const latest = exams[0], left = unread?.unread || 0;
+  const info = await Promise.all(kids.map(async (k) => {
+    const [rc, att, fee] = await Promise.all([latest ? api(`/report-card/${k.id}?examId=${latest.id}`).catch(() => null) : null,
+      api(`/attendance/mine?studentId=${k.id}`).catch(() => null), api(`/fees/mine?studentId=${k.id}`).catch(() => null)]);
+    const sm = rc?.card?.summary || {}, mean = sm.mean != null ? +sm.mean : null, rate = att?.summary?.total ? att.summary.rate : null;
+    const hasFee = fee && (fee.charged || fee.payments?.length), paidPct = hasFee && fee.charged ? Math.min(100, ((fee.charged - Math.max(0, fee.balance)) / fee.charged) * 100) : null;
+    return { k, rc, mean, sm, rate, fee: hasFee ? fee : null, paidPct };
+  }));
+  const owing = info.filter((i) => i.fee && i.fee.balance > 0);
+  const todo = [
+    left > 0 && ['✉', 'Read your messages', `${left} unread`, 'messages', left],
+    owing.length > 0 && ['KSh', 'See school fees', owing.map((i) => `${i.k.full_name.split(' ')[0]}: ${kes(i.fee.balance)}`).join(' · '), 'results'],
+    ['▤', 'Open the report card', latest ? latest.name : 'Results appear here when published', 'results'],
+    ['▦', 'School calendar', 'Terms, holidays and events', 'calendar'],
+  ].filter(Boolean).slice(0, 4);
+  el.innerHTML = `${ctx.bar(hello(ctx.me, 'there'), dateLine(ctx.me))}
+  ${left > 0 ? waitingBar(`${left} unread message${left === 1 ? '' : 's'} from the school`, '#/app/messages', 'Read now') : ''}
+  ${info.map((i) => `<div class="card fade" style="margin-bottom:16px"><div class="prof" style="margin-bottom:14px"><span class="ava lg b${band(i.mean) || 0}">${esc(initials(i.k.full_name))}</span><div class="grow"><h2>${esc(i.k.full_name)}</h2><div class="mut sm">${esc(i.k.class_name || 'No class yet')}</div></div>${band(i.mean) ? bandPill(i.mean) : ''}<a class="btn sm" href="#/app/results">Report card</a></div>
+    <div class="grid g3">
+      ${stat('Latest result', i.mean != null ? num(i.mean) + '%' : '—', { tone: bandTone(i.mean), sub: i.mean != null ? `${BAND_LABELS[band(i.mean)]}${i.sm.classPosition ? ` · ${i.sm.classPosition} of ${i.sm.classOutOf} in class` : ''}` : (latest ? 'Not published yet' : 'No exams yet') })}
+      ${ctx.features.attendance !== false ? stat('Attendance', i.rate != null ? num(i.rate) + '%' : '—', { tone: bandTone(i.rate), sub: i.rate != null ? `${BAND_LABELS[band(i.rate)]} · last 30 days` : 'No register yet' }) : ''}
+      ${i.fee ? stat('School fees', i.fee.balance > 0 ? kes(i.fee.balance) : 'Paid up', { tone: i.fee.balance > 0 ? bandTone(i.paidPct) : 'b5', sub: i.fee.balance > 0 ? `still to pay · ${num(i.paidPct)}% paid` : 'Nothing owing' }) : ''}</div></div>`).join('')}
+  ${tiles(todo)}`;
+}
 
 async function results(el, ctx) {
   const [kids, exams] = await Promise.all([api('/students/mine'), api('/exams')]);
@@ -79,4 +109,4 @@ async function results(el, ctx) {
   await load();
 }
 
-export const views = { results, messages, calendar: school.views.calendar };
+export const views = { overview, results, messages, calendar: school.views.calendar };

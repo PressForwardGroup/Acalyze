@@ -1,10 +1,42 @@
 import { api } from '../api.js';
-import { esc, $, $$, num, toast, run, table, pill, bandPill, bandTone } from '../ui.js';
+import { esc, $, $$, num, toast, run, table, pill, bandPill, bandTone, bandColor, stat } from '../ui.js';
 import { messages } from './chat.js';
 import * as school from './school.js';
+import { hello, dateLine, countTone, countSub, waitingBar, tiles, reports } from './home.js';
 
 const opt = (rows, val, label, sel) => rows.map((r) => `<option value="${esc(val(r))}" ${val(r) === sel ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
 const median = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
+
+// ---------- Home ----------
+async function overview(el, ctx) {
+  const [teachers, classes, subjects, exams, classTeacherOf, unread] = await Promise.all([api('/teachers'), api('/classes'), api('/subjects'), api('/exams'),
+    api('/student-transfer/class-results/mine').catch(() => []), ctx.features.chat !== false ? api('/chat/unread').catch(() => null) : null]);
+  const mine = (teachers.find((t) => t.id === ctx.me.id)?.assignments) || [], latest = exams[0];
+  const cName = Object.fromEntries(classes.map((c) => [c.id, c.name])), sName = Object.fromEntries(subjects.map((s) => [s.id, s.name]));
+  // how much of each class and subject has marks for the latest exam
+  const jobs = latest ? await Promise.all(mine.slice(0, 12).map(async (a) => {
+    const rows = await api(`/marks?examId=${latest.id}&classId=${a.class_id}&subjectId=${a.subject_id}`).catch(() => []);
+    const done = rows.filter((r) => r.percent != null || r.grade).length;
+    return { cls: cName[a.class_id] || '?', sub: sName[a.subject_id] || '?', done, total: rows.length, pct: rows.length ? (done / rows.length) * 100 : 0 };
+  })) : [];
+  const open = jobs.filter((j) => j.total > 0 && j.done < j.total), left = unread?.unread || 0;
+  const todo = [
+    ...open.slice(0, 2).map((j) => ['✎', `Enter ${j.sub} marks`, `${j.cls} · ${j.done} of ${j.total} done`, 'marks']),
+    left > 0 && ['✉', 'Read your messages', `${left} unread`, 'messages', left],
+    ctx.features.attendance !== false && ['✓', 'Take the register', 'Mark who is in class today', 'attendance'],
+    classTeacherOf.length > 0 && ['▤', 'My class results', classTeacherOf.map((c) => c.name).join(', '), 'myclass'],
+  ].filter(Boolean).slice(0, 4);
+  el.innerHTML = `${ctx.bar(hello(ctx.me, 'Teacher'), dateLine(ctx.me))}
+  ${left > 0 ? waitingBar(`${left} unread message${left === 1 ? '' : 's'}`, '#/app/messages', 'Read now') : ''}
+  ${!mine.length ? '<div class="card empty">You have not been assigned any classes and subjects yet.<br>Ask your school admin to assign them to you.</div>' : `
+  <h2 class="sect">Needs attention</h2><div class="grid g3 fade">
+    ${latest ? stat('Marks still to enter', open.length, { tone: countTone(open.length), sub: open.length ? `${latest.name}` : `All done for ${latest.name}` }) : stat('Marks still to enter', '—', { sub: 'No exam yet' })}
+    ${ctx.features.chat !== false ? stat('Unread messages', left, { tone: countTone(left), sub: countSub(left) }) : ''}
+    ${stat('My classes and subjects', mine.length, { sub: `${new Set(mine.map((a) => a.class_id)).size} class${new Set(mine.map((a) => a.class_id)).size === 1 ? '' : 'es'}` })}</div>
+  ${tiles(todo)}
+  ${jobs.length ? `<h2 class="sect">Marks entry for ${esc(latest.name)}</h2><div class="card fade">${jobs.map((j) => `<div style="margin:0 0 14px"><div class="row sm" style="justify-content:space-between;margin-bottom:5px"><span class="b">${esc(j.sub)} <span class="mut">· ${esc(j.cls)}</span></span><span class="mut">${j.done} of ${j.total} students</span></div><div class="bar" role="progressbar" aria-valuenow="${Math.round(j.pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${j.pct}%;background:${bandColor(j.pct)}"></i></div></div>`).join('')}</div>` : ''}`}
+  ${reports({ marks: 'Enter marks', attendance: 'Attendance', myclass: 'My class results' }, ['marks', 'attendance', ...(classTeacherOf.length ? ['myclass'] : [])])}`;
+}
 
 // ---------- Enter marks ----------
 async function marks(el, ctx) {
@@ -79,4 +111,4 @@ async function myclass(el, ctx) {
   await load();
 }
 
-export const views = { marks, attendance: school.views.attendance, myclass, messages, calendar: school.views.calendar };
+export const views = { overview, marks, attendance: school.views.attendance, myclass, messages, calendar: school.views.calendar };

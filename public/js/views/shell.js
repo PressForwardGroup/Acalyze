@@ -17,12 +17,12 @@ const NAV = {
     G('Money', [['fees', 'Fees & payments', 'lock:fees'], ['books', 'School accounts', 'lock:accounts']]),
     G('Staff', [['staff', 'Staff accounts'], ['approvals', 'Approvals', 'approvals'], ['audit', 'Audit log']])],
   finance: [['overview', 'Home'], ['fees', 'Fees & payments', 'lock:fees'], ['books', 'School accounts', 'lock:accounts'], ['approvals', 'My requests']],
-  teacher: [['marks', 'Enter marks'], ['attendance', 'Attendance'], ['myclass', 'My class'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
-  parent: [['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
+  teacher: [['overview', 'Home'], ['marks', 'Marks'], ['attendance', 'Attendance'], ['myclass', 'My class'], ['messages', 'Messages', 'unread']],
+  parent: [['overview', 'Home'], ['results', 'Report cards'], ['messages', 'Messages', 'unread'], ['calendar', 'Calendar']],
 };
-const HIDDEN = { admin: [['subscription', 'Subscription', 'Settings'], ['audit', 'Audit log', 'Settings'], ['student', 'Student profile', 'Students']] };   // reachable from other pages, not the menu
+const HIDDEN = { teacher: [['calendar', 'Calendar', 'School life']], admin: [['subscription', 'Subscription', 'Settings'], ['audit', 'Audit log', 'Settings'], ['student', 'Student profile', 'Students']] };   // reachable from other pages, not the menu
 const TABBAR = ['teacher', 'parent', 'finance'];                                         // few pages: bottom tabs on phones
-const REPORT_KEYS = ['analytics', 'watch', 'reportcards', 'fees', 'attendance', 'myclass', 'approvals', 'students'];
+const REPORT_KEYS = ['analytics', 'watch', 'reportcards', 'fees', 'attendance', 'myclass', 'approvals', 'students', 'marks'];
 const MODULE = {
   platform_admin: () => import('./platform.js'), admin: () => import('./admin.js'), principal: () => import('./principal.js'),
   finance: () => import('./finance.js'), teacher: () => import('./teacher.js'), parent: () => import('./parent.js'),
