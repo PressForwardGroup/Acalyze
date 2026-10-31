@@ -290,6 +290,11 @@ svg .val{fill:var(--ink);font-weight:600}
   .rcpt{margin:0;page-break-after:always;break-inside:avoid;width:auto}
   .mc{page-break-after:always;box-shadow:none;border-radius:0;max-width:none;margin:0}
   .card{box-shadow:none}
+  /* paper is always light, even if the screen is in dark mode, and the colour scale must still print */
+  :root,:root[data-theme="dark"]{--bg:#fff;--surface:#fff;--surface2:#F8FAFC;--ink:#0F172A;--mut:#4B5563;--line:#CBD5E1;--line2:#E5E7EB;
+    --b5:#1F4FD1;--b4:#16A34A;--b3:#EAB308;--b2:#F97316;--b1:#DC2626;--b5bg:#E8EEFD;--b4bg:#E7F6EC;--b3bg:#FEF6D0;--b2bg:#FFEBDD;--b1bg:#FEE9E9;
+    --b5ink:#1A3FA8;--b4ink:#15803D;--b3ink:#8A6A00;--b2ink:#C2410C;--b1ink:#B91C1C;--ok:#15803D;--warn:#8A5A00;--bad:#B91C1C;--info:#1F4FD1;--c1:#34459A;--c2:#F5B921;--c3:#16A34A;--c4:#8E9BD6;--c5:#DC2626;--c6:#5CC48A;color-scheme:light}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 
 [hidden]{display:none!important}

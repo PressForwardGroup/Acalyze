@@ -1,4 +1,4 @@
-import { esc, num, toast, barChart, lineChart, fmtDate } from '../ui.js';
+import { esc, num, toast, barChart, lineChart, fmtDate, bandColor, bandPill, bandTone } from '../ui.js';
 
 // Report-card options a school edits once and reuses (term label, signatures, etc).
 const SKEY = 'acalyze.cardOptions';
@@ -70,16 +70,16 @@ export function classicCard(card, exam, o = cardOptions()) {
 export function modernCard(card, exam, o = cardOptions(), trend = []) {
   const { school, student, lines, summary: s } = card;
   const W = !s.eligible, taken = lines.filter((l) => l.taken);
-  const bars = taken.map((l) => ({ label: l.name, value: l.percent ?? (l.points / s.topPoints) * 100, color: 'var(--c1)' }));
-  const sub = taken.map((l) => `<tr class="${l.isCounted === false ? 'mut' : ''}"><td>${esc(l.name)}</td><td>${l.percent != null ? Math.round(l.percent) + '%' : '—'}</td><td><span class="pill">${esc(l.grade)}</span></td><td>${l.points}</td><td>${l.position ?? '—'}</td><td class="mut">${esc(l.remark || '')}</td></tr>`).join('');
+  const bars = taken.map((l) => ({ label: l.name, value: l.percent ?? (l.points / s.topPoints) * 100, color: bandColor(l.percent ?? (l.points / s.topPoints) * 100) }));
+  const sub = taken.map((l) => `<tr class="${l.isCounted === false ? 'mut' : ''}"><td>${esc(l.name)}</td><td>${l.percent != null ? Math.round(l.percent) + '%' : '—'}</td><td>${l.percent != null ? bandPill(l.percent, l.grade) : `<span class="pill">${esc(l.grade)}</span>`}</td><td>${l.points}</td><td>${l.position ?? '—'}</td><td class="mut">${esc(l.remark || '')}</td></tr>`).join('');
   const tr = trend.length > 1 ? `<div class="card flat" style="margin-top:14px"><div class="b" style="margin-bottom:8px">Progress across exams</div>${lineChart(trend.map((t) => t.exam.name), [{ name: 'Mean', values: trend.map((t) => (t.mean != null ? Math.round(t.mean * 10) / 10 : null)) }], { unit: '%', title: 'Mean score across exams' })}</div>` : '';
-  const kpi = (l, v, sub2) => `<div class="card flat stat"><span class="l">${l}</span><span class="n">${v}</span>${sub2 ? `<span class="sm mut">${sub2}</span>` : ''}</div>`;
+  const kpi = (l, v, sub2, tone = '') => `<div class="card flat stat ${tone ? 'tone-' + tone : ''}"><span class="l">${l}</span><span class="n">${v}</span>${sub2 ? `<span class="sm mut">${sub2}</span>` : ''}</div>`;
   return `<div class="mc">
    <div class="mc-head"><div><h2>${esc(school.name)}</h2><div class="mut sm">${esc(exam?.name || '')}${exam?.academic_year ? ' · ' + esc(exam.academic_year) : ''}</div></div>
      <div class="right"><div class="b">${esc(student.name)}</div><div class="mut sm">${esc(student.className)} · Adm ${esc(student.admissionNo)}</div></div></div>
    ${W ? `<div class="notice">No overall result this time: ${esc(s.reason || '')}</div>` : `
    <div class="grid g4">${kpi('Position', `${s.position}<span class="sm mut"> / ${s.outOf}</span>`, s.classPosition ? `Class: ${s.classPosition} of ${s.classOutOf}` : '')}
-     ${kpi('Mean score', s.mean != null ? num(s.mean) + '%' : '—')}${kpi('Overall grade', esc(s.grade || '—'), esc(s.remark || ''))}${kpi('Points', num(s.meanPoints), `${s.totalPoints} total`)}</div>`}
+     ${kpi('Mean score', s.mean != null ? num(s.mean) + '%' : '—', '', bandTone(s.mean))}${kpi('Overall grade', esc(s.grade || '—'), esc(s.remark || ''), bandTone(s.mean))}${kpi('Points', num(s.meanPoints), `${s.totalPoints} total`)}</div>`}
    <div class="card flat" style="margin-top:14px"><div class="b" style="margin-bottom:6px">Subjects</div>${barChart(bars, { max: 100, unit: '%', title: 'Subject scores', height: 190 })}</div>
    <div class="card flat pad0" style="margin-top:14px"><div class="ov"><table><thead><tr><th>Subject</th><th>Score</th><th>Grade</th><th>Pts</th><th>Position</th><th>Remark</th></tr></thead><tbody>${sub}</tbody></table></div></div>
    ${tr}

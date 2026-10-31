@@ -26,7 +26,7 @@ async function promotion(el, ctx) {
     const means = new Map();
     if (st.exam) {
       const d = await api(`/results?examId=${encodeURIComponent(st.exam)}&classId=${encodeURIComponent(st.from)}`).catch(() => null);
-      d?.rows.forEach((r) => { const top = d.scheme === 'cbc' ? 8 : 12; means.set(r.student.id, r.mean != null ? +r.mean : r.meanPoints != null ? (r.meanPoints / top) * 100 : null); });
+      d?.rows?.forEach((r) => { const top = d.scheme === 'cbc' ? 8 : 12; means.set(r.student.id, r.mean != null ? +r.mean : r.meanPoints != null ? (r.meanPoints / top) * 100 : null); });
     }
     st.rows = inClass.map((s) => ({ s, mean: means.get(s.id) ?? null }));
     st.pick = {};

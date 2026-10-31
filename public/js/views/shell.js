@@ -52,6 +52,13 @@ const HELP = {
   messages: ['Write to a parent or teacher. New messages show a red number.'],
   myclass: ['Your class results, ranked. Add a comment for each student.'],
   results: ['Pick an exam to see your child’s report card and progress.'],
+  exams: ['Create an exam, enter marks, then press Publish when results are ready for parents.', 'Draft exams are only visible to staff.'],
+  subjects: ['Subject codes print on the report card. Use "Add the standard 8-4-4 subjects" to start quickly.', 'Section says which classes take the subject.'],
+  parents: ['Link a parent to a student by phone number. Parents sign in with that number.'],
+  excel: ['Use your existing marks workbook: one sheet per class, like FORM 3 or GRADE 10.', 'Nothing is saved until you press Import.'],
+  resets: ['Give the temporary password to the person directly. They choose a new one when they sign in.'],
+  audit: ['A record of who changed what, and when. It cannot be edited.'],
+  subscription: ['See your plan, what is due and your payment history.'],
   settings: ['"My account" is about you. "School" is for the whole school (admins only).'],
 };
 
@@ -131,8 +138,7 @@ export async function mountShell(app, s, viewKey) {
     async refreshBadges() { await updateBadges(app, role, features); },
     go(k) { location.hash = `#/app/${k}`; } };
   const el = $('#main', app);
-  const viewOnly = role === 'principal' && ['analytics', 'watch', 'reportcards'].includes(viewKey);   // the principal looks, the school admin changes
-  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div>${here?.group && here.group !== here.label ? `<div class="crumbs">${esc(here.group)} <span>›</span> ${esc(here.label)}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div><div class="row">${viewOnly ? '' : actions}${HELP[key] ? '<button class="btn sm" data-help>? Help</button>' : ''}</div></div>`;
+  const bar = (title, sub = '', actions = '') => `<div class="topbar no-print"><div>${here?.group && here.group !== here.label ? `<div class="crumbs">${esc(here.group)} <span>›</span> ${esc(here.label)}</div>` : ''}<h1>${esc(title)}</h1>${sub ? `<div class="mut sm" style="margin-top:3px">${esc(sub)}</div>` : ''}</div><div class="row">${actions}${HELP[key] ? '<button class="btn sm" data-help>? Help</button>' : ''}</div></div>`;
   ctx.bar = bar;
   el.addEventListener('click', (e) => {
     if (!e.target.closest('[data-help]')) return;
