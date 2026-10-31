@@ -66,7 +66,7 @@ async function teachers(el, ctx) {
     <div><label class="f" for="sec">Section *</label><select class="i" id="sec">${SECTIONS.map((s) => `<option>${s}</option>`).join('')}</select></div>
     <div><label class="f" for="pw">Temporary password *</label><input class="i" id="pw" value="${Math.random().toString(36).slice(2, 10)}"></div>${campusField(centers)}</div>
     <p class="sm mut">They'll be asked to choose their own password the first time they sign in. Then assign their classes and subjects below.</p>
-    <div class="row"><button class="btn primary" id="add">Add teacher</button><button class="btn" id="bulk">Import from CSV</button></div></div>
+    <div class="row"><button class="btn primary" id="add">Add teacher</button><a class="btn" href="#/app/setupxl">Import from Excel</a></div></div>
   <div class="card pad0" style="margin-top:18px">${table(['Teacher', 'Email', 'Section', 'Teaches', ''], list.map((t) => [`<b>${esc(t.full_name)}</b>`, esc(t.email || '—'), pill(t.section), `<span class="sm">${t.assignments.length ? t.assignments.slice(0, 3).map((a) => `${esc(clsName[a.class_id] || '?')}: ${esc(subName[a.subject_id] || '?')}`).join('<br>') + (t.assignments.length > 3 ? `<br><span class="mut">+${t.assignments.length - 3} more</span>` : '') : '<span class="mut">Nothing assigned</span>'}</span>`,
     `<div class="row" style="gap:6px"><button class="btn sm" data-assign="${t.id}">Classes & subjects</button><button class="btn sm" data-reset="${t.id}">Reset password</button><button class="btn sm danger" data-del="${t.id}">Delete</button></div>`]), { empty: 'No teachers yet.' })}</div>`;
   $('#add', el).onclick = (e) => run(e.currentTarget, async () => {
@@ -75,7 +75,6 @@ async function teachers(el, ctx) {
     modal(`<h3>Teacher added</h3><p>Give ${esc(val(el, 'fn'))} these sign-in details:</p><p>Email: <span class="secret">${esc(val(el, 'em'))}</span><br>Temporary password: <span class="secret">${esc(val(el, 'pw'))}</span></p><button class="btn primary" data-close>Done</button>`);
     teachers(el, ctx);
   });
-  $('#bulk', el).onclick = () => csvModal({ title: 'Import teachers', hint: 'Columns: Full Name, Section (PRIMARY/JUNIOR/SENIOR), Class, Subject, Phone. Teachers imported this way need an email and password set afterwards.', path: '/teachers/bulk', example: 'Full Name,Section,Class,Subject,Phone\nJane Wanjiku,SENIOR,Form 3 West,Mathematics,0712345678', done: () => teachers(el, ctx) });
   $$('[data-reset]', el).forEach((b) => (b.onclick = () => { const pw = Math.random().toString(36).slice(2, 10); modal(`<h3>Reset password</h3><p>Set a temporary password. They'll choose a new one at next sign-in.</p><input class="i" id="np" value="${pw}"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Reset</button></div>`, { onMount: (m, close) => { $('#go', m).onclick = (e) => run(e.currentTarget, async () => { await api(`/teachers/${b.dataset.reset}/reset-password`, { method: 'POST', body: { password: $('#np', m).value } }); close(); toast('Password reset. Tell the teacher their temporary password.', 'ok'); }); } }); }));
   $$('[data-del]', el).forEach((b) => (b.onclick = async () => { if (await confirmBox('Delete this teacher?', 'Delete')) run(b, async () => { await api(`/teachers/${b.dataset.del}`, { method: 'DELETE' }); teachers(el, ctx); }); }));
   $$('[data-assign]', el).forEach((b) => (b.onclick = () => {
@@ -86,20 +85,6 @@ async function teachers(el, ctx) {
   }));
 }
 
-function csvModal({ title, hint, path, example, extra = {}, done, showLogins }) {
-  modal(`<h3>${esc(title)}</h3><p class="sm mut">${esc(hint)}</p><textarea class="i" id="csv" placeholder="${esc(example)}"></textarea>
-    <div class="row" style="margin-top:10px"><input type="file" id="file" accept=".csv,text/csv" class="sm"></div><div id="res" style="margin-top:12px"></div>
-    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close>Close</button><button class="btn primary" id="go">Upload</button></div>`, {
-    onMount: (m) => {
-      $('#file', m).onchange = async (e) => { const f = e.target.files[0]; if (f) $('#csv', m).value = await f.text(); };
-      $('#go', m).onclick = (e) => run(e.currentTarget, async () => {
-        const csv = $('#csv', m).value; if (!csv.trim()) return toast('Paste your CSV or choose a file.', 'bad');
-        const r = await api(path, { method: 'POST', body: { csv, ...extra } }); done?.();
-        $('#res', m).innerHTML = `<div class="notice ok">${r.added} added.</div>${(r.scaleWarnings || []).map((w) => `<div class="notice" style="margin-top:8px">⚠ ${esc(w.message)}</div>`).join('')}${r.skipped?.length ? `<div class="notice" style="margin-top:8px"><b>${r.skipped.length} skipped:</b><br>${r.skipped.slice(0, 12).map(esc).join('<br>')}${r.skipped.length > 12 ? '<br>…' : ''}</div>` : ''}${showLogins && r.parentLogins?.length ? showLogins(r.parentLogins) : ''}`;
-        const dl = $('#dlLogins', m); if (dl) dl.onclick = () => download('parent-logins.csv', 'Phone,Temporary password,Student\n' + r.parentLogins.map((l) => `${l.phone},${l.tempPassword},"${l.student}"`).join('\n'), 'text/csv');
-      });
-    } });
-}
 
 // ---------- Students ----------
 async function students(el, ctx) {
@@ -140,7 +125,7 @@ async function students(el, ctx) {
     <div><label class="f" for="pp">Parent phone</label><input class="i" id="pp" type="tel" placeholder="07xx xxx xxx"></div>
     <div><label class="f" for="kc">KCPE marks (8-4-4)</label><input class="i" id="kc" type="number" min="0" max="500"></div></div>
     ${ctx.features.parents ? '<p class="sm mut">A parent account is created from the phone number, and you get a temporary password to hand over.</p>' : '<p class="sm mut">Your plan has no parent accounts, so parent phones are not used.</p>'}
-    <div class="row"><button class="btn primary" id="add">Add student</button><button class="btn" id="bulk">Import from CSV</button></div></div>
+    <div class="row"><button class="btn primary" id="add">Add student</button><a class="btn" href="#/app/setupxl">Import from Excel</a></div></div>
   <div class="row filters"><input class="i" id="q" placeholder="Search name or admission no." style="max-width:250px" aria-label="Search students">
     <select class="i" id="cf" style="width:auto" aria-label="Class"><option value="">All classes</option><option value="-">No class</option>${opt(cls)}</select>
     <select class="i" id="stf" style="width:auto" aria-label="Status"><option value="">Any status</option><option value="5">Excellent</option><option value="4">Good</option><option value="3">Monitor</option><option value="2">At risk</option><option value="1">Critical</option><option value="none">No marks</option></select>
@@ -186,8 +171,6 @@ async function students(el, ctx) {
     if (r.newParentLogin) modal(`<h3>Student added</h3><p>A parent account was created. Give the parent these details:</p><p>Phone: <span class="secret">${esc(r.newParentLogin.phone)}</span><br>Temporary password: <span class="secret">${esc(r.newParentLogin.tempPassword)}</span></p><p class="sm mut">This is shown once. The parent chooses their own password after signing in.</p><button class="btn primary" data-close>Done</button>`);
     else toast('Student added', 'ok'); students(el, ctx);
   });
-  $('#bulk', el).onclick = () => csvModal({ title: 'Import students', hint: 'Columns: Full Name, Admission No, Class (exact class name), Parent Name, Parent Phone. Parent accounts are created from the phone numbers.', path: '/students/bulk', example: 'Full Name,Admission No,Class,Parent Name,Parent Phone\nAmina Otieno,RVS-001,Form 3 West,Mary Otieno,0712345678', done: () => students(el, ctx),
-    showLogins: (l) => `<div class="notice" style="margin-top:8px"><b>${l.length} new parent accounts.</b> Temporary passwords are shown once: <button class="btn sm" id="dlLogins">Download list (CSV)</button></div>` });
   $('#mvto', el).onchange = (e) => { const to = e.target.value, ids = picked(); if (!to) return; if (!ids.length) { e.target.value = ''; return toast('Tick some students first.', 'bad'); } run(null, async () => { const r = await api('/student-transfer', { method: 'POST', body: { studentIds: ids, classId: to } }); toast(`Moved ${r.moved} student(s)`, 'ok'); students(el, ctx); }); };
   $('#delsel', el).onclick = async (e) => { const ids = picked(); if (!ids.length) return toast('Tick some students first.', 'bad'); if (await confirmBox(`Delete ${ids.length} student(s) and all their marks?`, 'Delete')) run(e.target, async () => { await api('/student-transfer/delete-students', { method: 'POST', body: { ids } }); students(el, ctx); }); };
 }

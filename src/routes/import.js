@@ -4,6 +4,10 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { resolveCenter } from '../lib/scope.js';
 import { planImport, applyImport } from '../lib/importer.js';
+import { planSetup, applySetup } from '../lib/setupImport.js';
+import { enabledSections } from '../lib/sections.js';
+import { catalogueFor } from '../lib/curriculum.js';
+import { linkParent } from '../lib/parents.js';
 
 export const importRouter = Router();
 importRouter.use(requireAuth, requireRole('admin'));
@@ -52,4 +56,60 @@ importRouter.post('/workbook', asyncHandler(async (req, res) => {
   } finally {
     client.release();
   }
+}));
+
+// Set a school up from an Excel workbook: teachers (with their classes and subjects) and students.
+// Body: { teachers, students, answers, centerId, dryRun } - already read in the browser (public/js/setupExcel.js).
+// dryRun = true returns what WOULD happen, plus any "which subject is this?" questions, and writes nothing.
+const PARENT_LINK_LIMIT = 120;       // creating a parent login costs a password hash each, so very large imports link parents later
+
+importRouter.post('/setup', asyncHandler(async (req, res) => {
+  const { teachers = [], students = [], answers = {}, centerId, dryRun = false } = req.body || {};
+  const org = req.auth.organizationId;
+  if (!Array.isArray(teachers) || !Array.isArray(students)) return res.status(400).json({ error: 'Send teachers and students as lists.' });
+  if (!teachers.length && !students.length) return res.status(400).json({ error: 'There is nothing to import: no teachers or students were found.' });
+  if (teachers.length > 2000 || students.length > 20000) return res.status(400).json({ error: 'That workbook is too large to import in one go.' });
+
+  const center = await resolveCenter(req, centerId);
+  if (!center) return res.status(400).json({ error: 'Choose which campus to import into (centerId).' });
+  const sections = await enabledSections(org);
+
+  const [classes, subjects, teacherRows, studentRows, aliasRows] = await Promise.all([
+    query(`SELECT id, name, section FROM classes WHERE organization_id = $1`, [org]),
+    query(`SELECT id, name, code FROM subjects WHERE organization_id = $1`, [org]),
+    query(`SELECT id, full_name, phone, email FROM teachers WHERE organization_id = $1`, [org]),
+    query(`SELECT id, school_id_number, class_id FROM students WHERE organization_id = $1`, [org]),
+    query(`SELECT a.alias_text AS alias, s.name AS subject FROM subject_aliases a JOIN subjects s ON s.id = a.subject_id WHERE a.organization_id = $1`, [org]),
+  ]);
+  const plan = planSetup({
+    teachers, students, sections, saved: aliasRows.rows, answers,
+    existing: { classes: classes.rows, subjects: subjects.rows, teachers: teacherRows.rows, students: studentRows.rows },
+  });
+  const choices = [...new Set([...subjects.rows.map((s) => s.name), ...catalogueFor(sections).map((r) => r.name)])].sort((a, b) => a.localeCompare(b));
+  if (dryRun) return res.json({ dryRun: true, summary: plan.summary, questions: plan.questions, skipped: plan.skipped, choices });
+
+  const byName = new Map(subjects.rows.map((s) => [s.name.toLowerCase(), s.id]));
+  const aliasAnswers = Object.entries(answers).filter(([, a]) => a?.subject).map(([header, a]) => ({ header, subject: a.subject, subjectId: byName.get(String(a.subject).toLowerCase()) || null }));
+
+  const client = await pool.connect();
+  let created;
+  try {
+    await client.query('BEGIN');
+    ({ created } = await applySetup(client, { organizationId: org, centerId: center, plan, aliasAnswers }));
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Parent logins are created after the import is safely saved. New accounts get a temporary password to hand over.
+  const withPhone = created.filter((c) => c.parentPhone);
+  const parentLogins = [];
+  for (const c of withPhone.slice(0, PARENT_LINK_LIMIT)) {
+    const np = await linkParent({ organizationId: org, studentId: c.id, parentName: c.parentName, parentPhone: c.parentPhone });
+    if (np) parentLogins.push({ ...np, student: c.name });
+  }
+  res.json({ summary: plan.summary, questions: plan.questions, skipped: plan.skipped, parentLogins, parentsNotLinked: Math.max(0, withPhone.length - PARENT_LINK_LIMIT) });
 }));

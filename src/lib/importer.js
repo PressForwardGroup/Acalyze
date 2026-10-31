@@ -1,4 +1,5 @@
 import { gradeFor, isScienceSubject } from './grading.js';
+import { classKey } from './setupImport.js';
 
 // Turns a parsed workbook (see public/js/excel.js) into a plan of what to create
 // and save, WITHOUT touching the database. The preview ("Check") and the real
@@ -10,7 +11,7 @@ const lc = (s) => s.toLowerCase();
 const MAX_SKIPPED = 60;
 
 export function planImport({ sheets, existing, importMarks = true }) {
-  const classByName = new Map(existing.classes.map((c) => [lc(c.name), c]));
+  const classByName = new Map(existing.classes.map((c) => [classKey(c.name), c]));      // "North West" and "Northwest" are the same class
   const subjByName = new Map(existing.subjects.map((s) => [lc(s.name), s]));
   const subjByCode = new Map(existing.subjects.filter((s) => s.code).map((s) => [String(s.code), s]));
   const studentByAdm = new Map(existing.students.map((s) => [lc(s.school_id_number), s]));
@@ -46,10 +47,10 @@ export function planImport({ sheets, existing, importMarks = true }) {
 
       const stream = clean(st.stream, 40);
       const className = stream ? `${grade} ${stream}` : `${grade} (no stream)`;
-      let cls = classByName.get(lc(className)) || classes.get(lc(className));
+      let cls = classByName.get(classKey(className)) || classes.get(classKey(className));
       if (!cls) cls = { ref: `c:${lc(className)}`, id: null, name: className, grade, stream: stream || null, section: lv.section, scheme: lv.scheme, isNew: true };
       else if (!cls.ref) cls = { ref: `c:${cls.id}`, id: cls.id, name: cls.name, isNew: false };
-      classes.set(lc(className), cls);
+      classes.set(classKey(className), cls);
 
       const ex = studentByAdm.get(lc(adm));
       const kcpe = Number(st.kcpe) > 0 && Number(st.kcpe) <= 500 ? Math.round(Number(st.kcpe)) : null;
