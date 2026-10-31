@@ -71,6 +71,7 @@ CREATE TABLE organizations (
   support_phone         text,
   support_note          text,
   pay_instructions      text,                       -- how parents pay (shown on their fees page), e.g. Paybill and account
+  expense_approval_threshold numeric(12,2) NOT NULL DEFAULT 0,   -- vouchers up to this amount need no approval; 0 = every voucher needs the principal
   created_at            timestamptz NOT NULL DEFAULT now()
 );
 
@@ -576,3 +577,102 @@ CREATE TABLE fee_refunds (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_fee_refunds_student ON fee_refunds (student_id, academic_year);
+
+-- School accounts (migration 009): money accounts, vote heads and budget, vouchers, other income, transfers, bank statement lines.
+CREATE TABLE cash_accounts (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name            text NOT NULL,
+  kind            text NOT NULL CHECK (kind IN ('cash','bank','mpesa')),
+  opening_balance numeric(14,2) NOT NULL DEFAULT 0,
+  opening_date    date NOT NULL DEFAULT current_date,
+  receives        text[] NOT NULL DEFAULT '{}',
+  active          boolean NOT NULL DEFAULT true,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE expense_heads (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name            text NOT NULL,
+  active          boolean NOT NULL DEFAULT true,
+  UNIQUE (organization_id, name)
+);
+
+CREATE TABLE budget_lines (
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  academic_year   text NOT NULL,
+  head_id         uuid NOT NULL REFERENCES expense_heads(id) ON DELETE CASCADE,
+  amount          numeric(14,2) NOT NULL CHECK (amount >= 0),
+  PRIMARY KEY (organization_id, academic_year, head_id)
+);
+
+CREATE SEQUENCE voucher_seq;
+
+CREATE TABLE expenses (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  voucher_no      text NOT NULL,
+  head_id         uuid NOT NULL REFERENCES expense_heads(id),
+  payee           text NOT NULL,
+  description     text NOT NULL,
+  amount          numeric(14,2) NOT NULL CHECK (amount > 0),
+  expense_date    date NOT NULL DEFAULT current_date,
+  academic_year   text NOT NULL,
+  invoice_ref     text,
+  status          text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','paid','rejected','cancelled')),
+  over_budget     boolean NOT NULL DEFAULT false,
+  account_id      uuid REFERENCES cash_accounts(id),
+  method          text CHECK (method IN ('cash','mpesa','bank','cheque','other')),
+  reference       text,
+  paid_on         date,
+  requested_by_id text,
+  paid_by_id      text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (organization_id, voucher_no)
+);
+CREATE INDEX idx_expenses_org_year ON expenses (organization_id, academic_year, status);
+
+CREATE TABLE income_entries (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  account_id      uuid NOT NULL REFERENCES cash_accounts(id),
+  kind            text NOT NULL CHECK (kind IN ('grant','donation','hire','sales','interest','other')),
+  source          text NOT NULL,
+  amount          numeric(14,2) NOT NULL CHECK (amount > 0),
+  received_on     date NOT NULL DEFAULT current_date,
+  reference       text,
+  note            text,
+  reversed_at     timestamptz,
+  reversal_reason text,
+  created_by_id   text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE account_transfers (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  from_account_id uuid NOT NULL REFERENCES cash_accounts(id),
+  to_account_id   uuid NOT NULL REFERENCES cash_accounts(id),
+  amount          numeric(14,2) NOT NULL CHECK (amount > 0),
+  transfer_date   date NOT NULL DEFAULT current_date,
+  note            text,
+  created_by_id   text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  CHECK (from_account_id <> to_account_id)
+);
+
+CREATE TABLE bank_statement_lines (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  account_id      uuid NOT NULL REFERENCES cash_accounts(id) ON DELETE CASCADE,
+  line_date       date NOT NULL,
+  description     text,
+  reference       text,
+  amount          numeric(14,2) NOT NULL,
+  line_key        text NOT NULL,
+  matched_ref     text,
+  status          text NOT NULL DEFAULT 'unmatched' CHECK (status IN ('unmatched','matched','ignored')),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, line_key)
+);

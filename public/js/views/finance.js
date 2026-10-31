@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { bandTone, esc, kes, stat, table, pill, fmtDate } from '../ui.js';
 import { views as school } from './school.js';
 import { approvals } from './approvals.js';
+import { views as accounts } from './books.js';
 import { hello, dateLine, bandSub, waitingBar, tiles, reports } from './home.js';
 
 // The finance officer (bursar, accounts clerk): fees and money only. No academic records.
@@ -29,4 +30,4 @@ async function overview(el, ctx) {
   ${reports({ fees: 'Fees and payments', approvals: 'My requests' }, ['fees', 'approvals'])}`;
 }
 
-export const views = { overview, fees: school.fees, approvals };
+export const views = { overview, fees: school.fees, books: accounts.books, approvals };

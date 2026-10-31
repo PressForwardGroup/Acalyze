@@ -35,6 +35,7 @@ import { mpesaRouter } from './routes/mpesa.js';
 import { payHooksRouter } from './routes/payHooks.js';
 import { auditRouter } from './routes/audit.js';
 import { approvalRequestsRouter } from './routes/approvalRequests.js';
+import { booksRouter } from './routes/books.js';
 import { ensureSchema } from './lib/autoMigrate.js';
 import { rateLimit } from './lib/rateLimit.js';
 
@@ -111,6 +112,7 @@ app.use('/pay-hooks', payHooksRouter);   // Safaricom posts here (public, protec
 app.use('/mpesa', mpesaRouter);
 app.use('/audit', auditRouter);
 app.use('/approval-requests', approvalRequestsRouter);
+app.use('/books', booksRouter);        // school accounts: budget, vouchers, cashbook (principal and finance officer)
 // Lets the Android app open this site full-screen (no browser bar). The two values come from the
 // app you build (see ANDROID.md); until they are set this answers with an empty list.
 app.get('/.well-known/assetlinks.json', (req, res) => {

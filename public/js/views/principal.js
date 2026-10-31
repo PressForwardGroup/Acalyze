@@ -5,6 +5,7 @@ import { views as admin } from './admin.js';
 import { staff } from './staff.js';
 import { audit } from './audit.js';
 import { approvals } from './approvals.js';
+import { views as accounts } from './books.js';
 
 // The principal (head teacher, owner): sees the whole school without changing it, and has full authority over finance.
 // The academic screens are the school admin's own, which the server keeps read-only for this role.
@@ -38,4 +39,4 @@ async function overview(el, ctx) {
   ${reports({ analytics: 'Results and analytics', watch: 'Students to watch', reportcards: 'Report cards', ...(money ? { fees: 'Fees and payments' } : {}) }, ['analytics', 'watch', ...(money ? ['fees'] : [])])}`;
 }
 
-export const views = { overview, analytics: admin.analytics, watch: admin.watch, reportcards: admin.reportcards, fees: admin.fees, approvals, staff, audit };
+export const views = { overview, analytics: admin.analytics, watch: admin.watch, reportcards: admin.reportcards, fees: admin.fees, books: accounts.books, approvals, staff, audit };
