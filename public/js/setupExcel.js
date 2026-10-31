@@ -13,24 +13,28 @@ import { parseSheet } from './excel.js';
 const norm = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const U = (v) => norm(v).toUpperCase();
 const letters = (v) => U(v).replace(/[^A-Z]/g, '');
-const titleCase = (s) => s.toLowerCase().replace(/(^|[\s\-'/])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+export const titleCase = (s) => s.toLowerCase().replace(/(^|[\s\-'/])([a-z])/g, (m, a, b) => a + b.toUpperCase());
 const YES = /^(Y|YES|TRUE|X|1|✓|✔)$/i;
 const GRADE_TOKEN = /\b(?:FORM|GRADE|GRD|GR)\s*\d{1,2}\b|\bPP\s*[12]\b/i;
 
 // "GRADE 10 SUBJECT TEACHERS", "Form 3", "GRD 7 LOVE", "PP1 RED" -> "Grade 10", "Form 3", "Grade 7", "PP1"
+const WORDS = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5, SIX: 6, SEVEN: 7, EIGHT: 8, NINE: 9, TEN: 10, ELEVEN: 11, TWELVE: 12 };
+// "GRADE ONE RED" -> "GRADE 1 RED" (primary sheets write the grade in words)
+export const numberWords = (text) => String(text ?? '').replace(/\b(GRADE|GRD|GR|FORM)\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN|ELEVEN|TWELVE)\b/gi, (m, g, w) => `${g} ${WORDS[w.toUpperCase()]}`);
+
 export function gradeOf(text) {
-  const t = U(text);
+  const t = U(numberWords(text));
   let m = t.match(/\bFORM\s*(\d)\b/); if (m) return `Form ${m[1]}`;
   m = t.match(/\bPP\s*([12])\b/); if (m) return `PP${m[1]}`;
   m = t.match(/\b(?:GRADE|GRD|GR)\s*(\d{1,2})\b/); if (m) return `Grade ${+m[1]}`;
   return null;
 }
-const cleanStream = (raw) => titleCase(norm(raw).replace(/^\d+\s*/, ''));
-const classLabel = (grade, stream) => (stream ? `${grade} ${stream}` : `${grade} (no stream)`);
+export const cleanStream = (raw) => titleCase(norm(raw).replace(/^\d+\s*/, ''));
+export const classLabel = (grade, stream) => (stream ? `${grade} ${stream}` : `${grade} (no stream)`);
 
 // A class as written in a cell: "Form 3 East", "GRADE 4 RED", or something we cannot place ("Std 7").
 export function classRef(raw, fallbackGrade = null) {
-  const text = norm(raw);
+  const text = norm(numberWords(raw));
   if (!text) return null;
   const grade = gradeOf(text) || fallbackGrade;
   if (!grade) return { name: titleCase(text), grade: null, stream: null };

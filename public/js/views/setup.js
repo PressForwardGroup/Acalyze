@@ -207,22 +207,6 @@ async function exams(el, ctx) {
 }
 
 // ---------- Marks upload (whole school) ----------
-async function marks(el, ctx) {
-  const list = await api('/exams');
-  el.innerHTML = `${ctx.bar('Marks upload', 'Upload a whole exam for the whole school from a spreadsheet saved as CSV')}
-  <div class="card"><div class="form-grid"><div><label class="f" for="ex">Exam</label><select class="i" id="ex">${opt(list)}</select></div></div>
-    <p class="sm mut">Columns: <b>Admission No, Subject, Score, Out of</b> (Out of is optional and defaults to 100). Score can be a number or a grade (e.g. EE1 or B+). If a paper looks like it was marked out of 30 or 50 but read as 100, we'll warn you.</p>
-    <textarea class="i" id="csv" placeholder="Admission No,Subject,Score,Out of&#10;RVS-001,Mathematics,47,50&#10;RVS-001,English,71"></textarea>
-    <div class="row" style="margin-top:10px"><input type="file" id="file" accept=".csv,text/csv" class="sm"><button class="btn primary" id="go">Upload marks</button></div><div id="res" style="margin-top:14px"></div></div>
-  <p class="sm mut" style="margin-top:12px">Teachers can also enter marks one class at a time from their own sign-in.</p>`;
-  if (!list.length) { $('#go', el).disabled = true; $('#res', el).innerHTML = '<div class="notice">Create an exam first.</div>'; }
-  $('#file', el).onchange = async (e) => { const f = e.target.files[0]; if (f) $('#csv', el).value = await f.text(); };
-  $('#go', el).onclick = (e) => run(e.currentTarget, async () => {
-    const csv = $('#csv', el).value; if (!csv.trim()) return toast('Paste your CSV or choose a file.', 'bad');
-    const r = await api('/marks/bulk', { method: 'POST', body: { examId: $('#ex', el).value, csv } });
-    $('#res', el).innerHTML = `<div class="notice ok">${r.added} marks saved.</div>${r.scaleWarnings.map((w) => `<div class="notice" style="margin-top:8px">⚠ ${esc(w.message)}</div>`).join('')}${r.skipped.length ? `<div class="notice bad" style="margin-top:8px"><b>${r.skipped.length} rows skipped:</b><br>${r.skipped.slice(0, 15).map(esc).join('<br>')}${r.skipped.length > 15 ? '<br>…' : ''}</div>` : ''}`;
-  });
-}
 
 // ---------- Parents ----------
 async function parents(el, ctx) {
@@ -301,4 +285,4 @@ async function student(el, ctx) {
   await draw();
 }
 
-export const views = { classes, subjects, teachers, students, student, exams, marks, parents, approvals };
+export const views = { classes, subjects, teachers, students, student, exams, parents, approvals };

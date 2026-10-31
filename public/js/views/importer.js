@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { esc, $, $$, num, toast, run, table, pill } from '../ui.js';
 import { parseWorkbook } from '../excel.js';
 import { parseSetupWorkbook } from '../setupExcel.js';
+import { parseMarksWorkbook } from '../marksExcel.js';
 
 let xlsxLib = null;
 function loadXlsx() {
@@ -187,4 +188,92 @@ async function setupxl(el, ctx) {
   }
 }
 
-export const views = { excel, setupxl };
+// ---------- marks from a workbook where learners are listed by name ----------
+async function marksxl(el, ctx) {
+  const [centers, exams] = await Promise.all([api('/centers'), api('/exams')]);
+  let parsed = null, answers = {}, outOf = {}, checked = false;
+  el.innerHTML = `${ctx.bar('Marks upload', 'A whole exam for the whole school, from an Excel workbook')}
+  <div class="card"><h2>1. Choose your workbook</h2>
+    <p class="sm mut" style="margin:6px 0 12px">One sheet per class, with the class in the title (for example <b>GRADE FOUR RED</b>), the learners' <b>names</b> down the side and a column for each subject, ending with TOTAL and MEAN. You do not need admission numbers: learners are matched by name to the ones you have already added. Combined sheets are ignored, and totals, means and positions are worked out for you.</p>
+    <input type="file" id="file" accept=".xlsx,.xls,.xlsm"><div id="status" class="sm mut" style="margin-top:8px"></div></div>
+  <div id="work" class="hide"></div>`;
+
+  $('#file', el).onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const st = $('#status', el); st.textContent = 'Reading…'; answers = {}; outOf = {}; checked = false;
+    try {
+      await loadXlsx();
+      const wb = window.XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const sheets = Object.fromEntries(wb.SheetNames.map((n) => [n, window.XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null })]));
+      parsed = parseMarksWorkbook(sheets);
+      if (!parsed.sheets.length) { st.textContent = 'No class sheets with marks were found in that file.'; $('#work', el).classList.add('hide'); parsed.notes.forEach((n) => toast(n, 'bad')); return; }
+      st.textContent = `${f.name}: ${parsed.sheets.length} class sheet(s), ${parsed.sheets.reduce((n, s) => n + s.students.length, 0)} learner(s).`;
+      draw();
+    } catch (err) { st.textContent = ''; toast(err.message, 'bad'); }
+  };
+
+  const examBody = () => {
+    const pick = $('#exSel', el)?.value;
+    return pick && pick !== '__new' ? { examId: pick } : { newExam: { name: ($('#exName', el)?.value || '').trim() } };
+  };
+  const payload = (dryRun) => ({ dryRun, sheets: parsed.sheets, answers, outOf, centerId: $('#center', el)?.value || undefined, ...examBody() });
+  const reset = () => { checked = false; const go = $('#go', el); if (go) go.disabled = true; };
+
+  function draw() {
+    const w = $('#work', el); w.classList.remove('hide');
+    w.innerHTML = `<h2 style="margin:22px 0 10px">2. What we found</h2>
+      <div class="card">${table(['Sheet', 'Class', 'Learners', 'Subject columns'], parsed.sheets.map((s) => [esc(s.sheet), `<b>${esc(s.className)}</b>`, s.students.length, s.columns.length]))}
+      ${parsed.notes.length ? `<ul class="sm" style="margin:12px 0 0;padding-left:18px">${parsed.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}</div>
+      <div class="card" style="margin-top:14px"><h2>3. Which exam are these marks for?</h2>
+        <div class="form-grid"><div><label class="f" for="exSel">Exam</label><select class="i" id="exSel"><option value="__new">Create a new exam</option>${exams.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+        <div id="newEx"><label class="f" for="exName">New exam name</label><input class="i" id="exName" value="${esc(parsed.exam || '')}" maxlength="120"></div>
+        ${centers.length > 1 ? `<div><label class="f" for="center">Campus</label><select class="i" id="center">${centers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>` : ''}</div>
+        <p class="sm mut" style="margin:8px 0">Marks already saved for this exam are updated, not duplicated.</p>
+        <div class="row" style="margin-top:10px"><button class="btn" id="check">Check what will happen</button><button class="btn primary" id="go" disabled>Import marks</button></div>
+        <div id="result" style="margin-top:16px"></div></div>`;
+    const sync = () => $('#newEx', w).classList.toggle('hide', $('#exSel', w).value !== '__new');
+    $('#exSel', w).onchange = () => { sync(); reset(); }; sync();
+    $('#exName', w).oninput = reset; $('#center', w)?.addEventListener('change', reset);
+    $('#check', w).onclick = (e) => run(e.currentTarget, async () => { const r = await api('/import/marks', { method: 'POST', body: payload(true) }); show(r, true); checked = true; $('#go', w).disabled = false; });
+    $('#go', w).onclick = (e) => run(e.currentTarget, async () => {
+      if (!checked) return;
+      if (examBody().newExam && !examBody().newExam.name) return toast('Give the new exam a name.', 'bad');
+      const r = await api('/import/marks', { method: 'POST', body: payload(false) }); show(r, false); checked = false; $('#go', w).disabled = true; toast('Marks imported', 'ok');
+    });
+  }
+
+  function show(r, dry) {
+    const s = r.summary, qs = r.questions || [], hints = r.outOfHints || [];
+    const missing = r.sheets.filter((x) => !x.found), close = r.sheets.flatMap((x) => (x.close || []).map((c) => ({ ...c, cls: x.className }))), unm = r.sheets.filter((x) => x.unmatched?.length);
+    const li = [
+      `<li><b>${s.marks}</b> mark(s) ${dry ? 'will be' : 'were'} saved${s.marksSaved != null ? ` (${s.marksSaved} written)` : ''} for <b>${s.matched}</b> of ${s.learners} learner(s) in <b>${s.sheetsRead}</b> class(es)</li>`,
+      s.newSubjects.length ? `<li><b>${s.newSubjects.length}</b> subject(s) ${dry ? 'will be added' : 'were added'}: ${s.newSubjects.map(esc).join(', ')}</li>` : '',
+      s.closeMatches ? `<li><b>${s.closeMatches}</b> learner(s) matched by a close name, listed below to check</li>` : '',
+      s.unmatched ? `<li><b>${s.unmatched}</b> name(s) on the sheets are not in your learners list and were left out</li>` : '',
+    ].join('');
+    const qHtml = qs.length ? `<div class="notice warn" style="margin-top:14px"><b>${qs.length} heading${qs.length > 1 ? 's' : ''} we are not sure about.</b> Tell us once and we will remember it.
+      <div class="ov" style="margin-top:10px">${table(['Written in the sheet', 'Where', 'Which subject is it?'], qs.map((x, i) => [`<b>${esc(x.header)}</b>`, `<span class="sm mut">${esc(x.classes.join(', '))}</span>`,
+        `<select class="i" data-q="${i}" style="min-height:36px"><option value="">Choose…</option>${(x.suggestions || []).map((n) => `<option value="${esc(n)}">${esc(n)} (suggested)</option>`).join('')}<option value="${esc(x.header.charAt(0) + x.header.slice(1).toLowerCase())}">Add “${esc(x.header)}” as a new subject</option><option value="__skip">Leave this column out</option>${(r.choices || []).map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>`]))}</div>
+      <button class="btn sm" id="again" style="margin-top:10px">Check again with my answers</button></div>` : '';
+    const hHtml = hints.length ? `<div class="notice warn" style="margin-top:14px"><b>Some marks are above 100.</b> If a paper is marked out of something else, say so and they will be scaled. Otherwise they are left out.
+      <div class="ov" style="margin-top:10px">${table(['Column', 'Subject', 'Marks above 100', 'Highest', 'Marked out of'], hints.map((h, i) => [`<b>${esc(h.header)}</b>`, esc(h.subject), h.n, h.top, `<input class="i" data-o="${i}" type="number" min="1" max="1000" value="${outOf[h.header] || ''}" placeholder="100" style="width:90px;min-height:36px">`]))}</div>
+      <button class="btn sm" id="again2" style="margin-top:10px">Check again</button></div>` : '';
+    const detail = [
+      missing.length ? `<details style="margin-top:12px" open><summary class="b sm" style="cursor:pointer">${missing.length} sheet(s) have no matching class</summary><ul class="sm" style="padding-left:18px">${missing.map((x) => `<li>${esc(x.sheet)}: no class called “${esc(x.className)}”. Set up your classes first (Students, Set up from Excel).</li>`).join('')}</ul></details>` : '',
+      close.length ? `<details style="margin-top:12px"><summary class="b sm" style="cursor:pointer">${close.length} close name match(es). Is each the same learner?</summary><ul class="sm" style="padding-left:18px">${close.map((c) => `<li>${esc(c.cls)}: “${esc(c.sheetName)}” → <b>${esc(c.systemName)}</b></li>`).join('')}</ul></details>` : '',
+      unm.length ? `<details style="margin-top:12px"><summary class="b sm" style="cursor:pointer">Names not found in your learners list</summary><ul class="sm" style="padding-left:18px">${unm.map((x) => `<li><b>${esc(x.className)}</b>: ${x.unmatched.map(esc).join(', ')}</li>`).join('')}</ul></details>` : '',
+      r.skipped?.length ? `<details style="margin-top:12px"><summary class="b sm" style="cursor:pointer">${s.skippedCount} other note(s)</summary><ul class="sm" style="padding-left:18px">${r.skipped.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></details>` : '',
+    ].join('');
+    $('#result', el).innerHTML = `<div class="notice ${dry ? '' : 'ok'}"><b>${dry ? 'This is what will happen (nothing saved yet):' : 'Done:'}</b><ul style="margin:8px 0 0;padding-left:18px">${li}</ul></div>${qHtml}${hHtml}${detail}
+      ${dry ? '<p class="sm mut" style="margin-top:12px">Happy with this? Press <b>Import marks</b>.</p>' : '<div class="row" style="margin-top:14px"><a class="btn primary" href="#/app/analytics">See results and analytics</a><a class="btn" href="#/app/reportcards">Report cards</a></div>'}`;
+    $$('[data-q]', el).forEach((sel) => (sel.onchange = () => {
+      const h = qs[+sel.dataset.q].header;
+      if (!sel.value) delete answers[h]; else answers[h] = sel.value === '__skip' ? { skip: true } : { subject: sel.value };
+      reset();
+    }));
+    $$('[data-o]', el).forEach((inp) => (inp.oninput = () => { const h = hints[+inp.dataset.o].header; if (Number(inp.value) > 0) outOf[h] = Number(inp.value); else delete outOf[h]; reset(); }));
+    for (const id of ['again', 'again2']) { const b = $('#' + id, el); if (b) b.onclick = (e) => run(e.currentTarget, async () => { const r2 = await api('/import/marks', { method: 'POST', body: payload(true) }); show(r2, true); checked = true; $('#go', el).disabled = false; }); }
+  }
+}
+
+export const views = { excel, setupxl, marks: marksxl };

@@ -71,7 +71,7 @@ export function resolveSubject(header, index, scope = {}) {
   if (index.custom.has(key)) return { ...out, status: 'matched', via: 'saved', subject: index.custom.get(key) };
 
   const hits = (index.map.get(key) || []).filter((e) => inScope(e, bands));
-  const distinct = [...new Map(hits.map((e) => [`${e.kind}:${e.parent || ''}:${e.name}`, e])).values()];
+  const distinct = [...new Map(hits.map((e) => [e.kind === 'part' ? `part:${e.parent}` : `subject:${e.name}`, e])).values()];     // "ENG 1" and "ENG1" are one and the same part
   if (distinct.length === 1) {
     const e = distinct[0];
     const res = { ...out, status: e.kind === 'part' ? 'part' : 'matched', via: 'name', ...named(e) };

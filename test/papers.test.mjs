@@ -56,3 +56,8 @@ test('typed levels become a percentage inside their KNEC range, not points / 8',
   assert.ok(pointsToPercent('844', 12) > 79.5 && pointsToPercent('844', 12) <= 100);
   assert.equal(pointsToPercent('cbc', null), null);
 });
+
+test('the same part written two ways is not ambiguous with itself ("ENG 1" and "ENG1")', () => {
+  for (const h of ['ENG 1', 'ENG1', 'ENG PP1', 'ENGLISH 1', 'ENG2']) { const x = r(h, 'GRD 8 LOVE'); assert.equal(x.status, 'part', h); assert.equal(x.subject, 'English'); }
+  assert.equal(r('PAPER 1', 'GRD 8 LOVE').status, 'ask', 'but "Paper 1" alone could be English or Kiswahili');
+});

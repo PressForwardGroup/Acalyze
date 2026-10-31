@@ -19,38 +19,18 @@ function levelFor(grade) {
   return band ? { band, section: BAND_SECTION[band], scheme: band === '844' ? '844' : 'cbc' } : null;
 }
 
-export function planSetup({ teachers = [], students = [], existing, sections, saved = [], answers = {} }) {
-  const classByKey = new Map(existing.classes.map((c) => [classKey(c.name), c]));
-  const subjByName = new Map(existing.subjects.map((s) => [lc(s.name), s]));
-  const teacherByName = new Map(existing.teachers.map((t) => [lc(t.full_name), t]));
-  const studentByAdm = new Map(existing.students.map((s) => [lc(s.school_id_number), s]));
-  const usedEmails = new Set(existing.teachers.map((t) => lc(t.email)).filter(Boolean));
+// Subjects: names are resolved with the short-name matcher, never guessed. Used by every import that meets subject names.
+//   subjectFor(header, grade, className) -> { subject } (existing, or new from the KNEC/KICD list) | { pending } (a question was recorded)
+//                                           | { skipped } (the person chose to leave it out)
+export function createSubjectLookup({ existingSubjects, sections, saved = [], answers = {} }) {
+  const subjByName = new Map(existingSubjects.map((s) => [lc(s.name), s]));
   const catalogue = new Map(catalogueFor(sections).map((r) => [lc(r.name), r]));
   const index = buildIndex({ sections, saved });
   const existingByCanon = new Map();                                  // "mathematics" -> the school's own "Maths"
-  for (const s of existing.subjects) { const r = resolveSubject(s.name, index, {}); if (r.status === 'matched' && !existingByCanon.has(lc(r.subject))) existingByCanon.set(lc(r.subject), s); }
+  for (const s of existingSubjects) { const r = resolveSubject(s.name, index, {}); if (r.status === 'matched' && !existingByCanon.has(lc(r.subject))) existingByCanon.set(lc(r.subject), s); }
   const answerByKey = new Map(Object.entries(answers).map(([h, a]) => [normaliseKey(h), a]));
+  const newSubjects = new Map(), questions = new Map();
 
-  const skipped = [];
-  const skip = (msg) => { if (skipped.length < MAX_SKIPPED) skipped.push(msg); else if (skipped.length === MAX_SKIPPED) skipped.push('…and more'); };
-  const newClasses = new Map(), newSubjects = new Map(), questions = new Map(), blockedBySection = new Set();
-
-  // ---- classes: an existing one, or one to create (only when we know the grade, and the school uses its section)
-  function classFor(ref) {
-    if (!ref?.name) return null;
-    const key = classKey(ref.name);
-    const have = classByKey.get(key);
-    if (have) return { ref: `c:${have.id}`, id: have.id, name: have.name, section: have.section || null };
-    if (newClasses.has(key)) return newClasses.get(key);
-    const lv = ref.grade ? levelFor(ref.grade) : null;
-    if (!lv) { skip(`Class "${ref.name}": not found, and it has no Form or Grade number to create it from.`); newClasses.set(key, null); return null; }
-    if (!sections.includes(lv.section)) { skip(`Class "${ref.name}" is in the ${lv.section} section, which your school does not use.`); blockedBySection.add(key); newClasses.set(key, null); return null; }
-    const c = { ref: `c:new:${key}`, id: null, name: ref.name, grade: ref.grade, stream: ref.stream || null, section: lv.section, scheme: lv.scheme, band: lv.band, isNew: true };
-    newClasses.set(key, c);
-    return c;
-  }
-
-  // ---- subjects: resolved with the short-name matcher; anything unsure becomes a question, never a guess
   function subjectFor(header, grade, className) {
     const band = bandFor(grade || className);
     const key = normaliseKey(header);
@@ -76,6 +56,34 @@ export function planSetup({ teachers = [], students = [], existing, sections, sa
       newSubjects.set(lc(name), s);
     } else if (!s.ref) s = { ref: `s:${s.id}`, id: s.id, name: s.name, isNew: false };
     return { subject: s };
+  }
+  return { subjectFor, newSubjects, questions, index };
+}
+
+export function planSetup({ teachers = [], students = [], existing, sections, saved = [], answers = {} }) {
+  const classByKey = new Map(existing.classes.map((c) => [classKey(c.name), c]));
+  const teacherByName = new Map(existing.teachers.map((t) => [lc(t.full_name), t]));
+  const studentByAdm = new Map(existing.students.map((s) => [lc(s.school_id_number), s]));
+  const usedEmails = new Set(existing.teachers.map((t) => lc(t.email)).filter(Boolean));
+  const { subjectFor, newSubjects, questions } = createSubjectLookup({ existingSubjects: existing.subjects, sections, saved, answers });
+
+  const skipped = [];
+  const skip = (msg) => { if (skipped.length < MAX_SKIPPED) skipped.push(msg); else if (skipped.length === MAX_SKIPPED) skipped.push('…and more'); };
+  const newClasses = new Map(), blockedBySection = new Set();
+
+  // ---- classes: an existing one, or one to create (only when we know the grade, and the school uses its section)
+  function classFor(ref) {
+    if (!ref?.name) return null;
+    const key = classKey(ref.name);
+    const have = classByKey.get(key);
+    if (have) return { ref: `c:${have.id}`, id: have.id, name: have.name, section: have.section || null };
+    if (newClasses.has(key)) return newClasses.get(key);
+    const lv = ref.grade ? levelFor(ref.grade) : null;
+    if (!lv) { skip(`Class "${ref.name}": not found, and it has no Form or Grade number to create it from.`); newClasses.set(key, null); return null; }
+    if (!sections.includes(lv.section)) { skip(`Class "${ref.name}" is in the ${lv.section} section, which your school does not use.`); blockedBySection.add(key); newClasses.set(key, null); return null; }
+    const c = { ref: `c:new:${key}`, id: null, name: ref.name, grade: ref.grade, stream: ref.stream || null, section: lv.section, scheme: lv.scheme, band: lv.band, isNew: true };
+    newClasses.set(key, c);
+    return c;
   }
 
   // ---- teachers
