@@ -199,6 +199,10 @@ tbody tr:hover td{background:var(--surface2)}
 .pod.first .step{background:var(--gold);height:64px;color:var(--on-gold)}
 .pod.third .step{background:var(--green)}
 .pod.third .step{height:22px}
+.chart{display:block;width:100%;max-width:760px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;margin:0 0 14px}.legend .lg{display:inline-flex;align-items:center;gap:6px}.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.hm{display:inline-block;min-width:48px;text-align:center;padding:3px 8px;border-radius:8px;font-weight:600;font-size:12px}
+.hm.b5{background:var(--b5bg);color:var(--b5ink)}.hm.b4{background:var(--b4bg);color:var(--b4ink)}.hm.b3{background:var(--b3bg);color:var(--b3ink)}.hm.b2{background:var(--b2bg);color:var(--b2ink)}.hm.b1{background:var(--b1bg);color:var(--b1ink)}
 .pod .nm{font-weight:600;margin-top:4px}
 .pod .pct{font-family:var(--serif);font-size:22px;margin-top:6px}
 .pod.first .pct{color:var(--gold-ink);font-size:26px}
@@ -307,7 +311,7 @@ svg .val{fill:var(--ink);font-weight:600}
 @media (max-width:480px){.set2{grid-template-columns:1fr}}
 
 /* student list and profile */
-.who{display:flex;align-items:center;gap:10px}
+.stu{display:flex;align-items:center;gap:10px}
 .ava{width:34px;height:34px;border-radius:99px;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;background:var(--line2);color:var(--mut)}
 .ava.lg{width:56px;height:56px;font-size:18px}
 .ava.b5{background:var(--b5bg);color:var(--b5ink)}.ava.b4{background:var(--b4bg);color:var(--b4ink)}.ava.b3{background:var(--b3bg);color:var(--b3ink)}.ava.b2{background:var(--b2bg);color:var(--b2ink)}.ava.b1{background:var(--b1bg);color:var(--b1ink)}

@@ -68,15 +68,15 @@ const clip = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '…'
 // Vertical bars. items: [{label, value, color?}]
 export function barChart(items, { height = 200, max, unit = '', title = 'Bar chart' } = {}) {
   if (!items.length) return '<div class="empty">No data yet</div>';
-  const W = Math.max(320, items.length * 58), H = height, padB = 34, padT = 20;
+  const W = Math.max(480, Math.min(items.length * 84, 600)), H = height, padB = 34, padT = 20, slot = W / items.length, maxLabel = Math.max(9, Math.floor(slot / 7.5));
   const m = max ?? Math.max(1, ...items.map((i) => +i.value || 0));
-  const bw = Math.min(36, (W / items.length) * 0.6);
+  const bw = Math.min(48, slot * 0.6);
   const bars = items.map((it, i) => {
     const v = +it.value || 0, h = Math.max(0, ((H - padB - padT) * v) / m);
     const x = (W / items.length) * (i + 0.5) - bw / 2, y = H - padB - h;
     return `<g><rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="4" fill="${it.color || color(0)}"><title>${esc(it.label)}: ${num(v)}${unit}</title></rect>
       <text class="val" x="${x + bw / 2}" y="${y - 5}" text-anchor="middle">${num(v)}${unit}</text>
-      <text x="${x + bw / 2}" y="${H - 14}" text-anchor="middle">${esc(clip(it.label, 9))}</text></g>`;
+      <text x="${x + bw / 2}" y="${H - 14}" text-anchor="middle">${esc(clip(it.label, maxLabel))}<title>${esc(it.label)}</title></text></g>`;
   }).join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}"><line x1="0" x2="${W}" y1="${H - padB}" y2="${H - padB}" stroke="var(--line)"/>${bars}</svg>`;
 }
@@ -150,6 +150,7 @@ export function band(pct) {
 }
 const BAND_VARS = [null, 'var(--b1)', 'var(--b2)', 'var(--b3)', 'var(--b4)', 'var(--b5)'];
 export const bandColor = (pct) => BAND_VARS[band(pct)] || 'var(--line)';
+export const bandVar = (n) => BAND_VARS[n] || 'var(--line)';
 // A coloured chip with the level written out, so the colour is never the only signal.
 export const bandPill = (pct, text) => { const b = band(pct); return b ? `<span class="pill b${b}">${esc(text ?? BAND_LABELS[b])}</span>` : '<span class="mut">—</span>'; };
 export const bandTone = (pct) => { const b = band(pct); return b ? 'b' + b : ''; };
@@ -159,3 +160,11 @@ export const recent = {
   add(k) { try { const l = recent.list().filter((x) => x !== k); l.unshift(k); localStorage.setItem('acalyze.recent', JSON.stringify(l.slice(0, 8))); } catch { /* storage may be blocked */ } },
   list() { try { return JSON.parse(localStorage.getItem('acalyze.recent') || '[]'); } catch { return []; } },
 };
+
+// A one-line key for the performance colours, with the cut-offs, shown on pages that use them.
+export const bandLegend = () => {
+  const [a, b, c, d] = BAND_CUTS, rows = [[5, `${a}%+`], [4, `${b}–${a - 1}%`], [3, `${c}–${b - 1}%`], [2, `${d}–${c - 1}%`], [1, `Below ${d}%`]];
+  return `<div class="legend" aria-label="Colour key">${rows.map(([n, r]) => `<span class="lg"><i style="background:${bandVar(n)}"></i>${BAND_LABELS[n]} <span class="mut">${r}</span></span>`).join('')}</div>`;
+};
+// Which colour a grade letter or CBC level earns, so grade bars use the same scale as percentages.
+export const gradeBand = (g) => ({ A: 5, 'A-': 5, 'B+': 4, B: 4, 'B-': 3, 'C+': 3, C: 2, 'C-': 2, EE1: 5, EE2: 5, ME1: 4, ME2: 3, AE1: 2, AE2: 2, BE1: 1, BE2: 1 }[g] || 1);

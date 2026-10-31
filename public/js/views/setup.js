@@ -3,6 +3,15 @@ import { esc, $, $$, toast, run, table, pill, modal, confirmBox, copy, fmtDate, 
 import { download } from './reportcard.js';
 
 const SECTIONS = ['PRIMARY', 'JUNIOR', 'SENIOR'];
+// Guess the section from a class or grade name ("Form 3", "Grade 8 Blue", "PP2"), so nobody has to pick it and a Form 3 class never lands in PRIMARY by mistake.
+function sectionOf(label) {
+  const t = String(label ?? '').toUpperCase();
+  if (/\bPP\s*[12]\b|^PP/.test(t)) return 'PRIMARY';
+  if (/\bFORM\s*[1-4]\b|\bF\s*[1-4]\b/.test(t) || (/^\s*[1-4]\s+[A-Z]/.test(t) && !/GRADE|GRD/.test(t))) return 'SENIOR';
+  const n = Number((t.match(/(?:GRADE|GRD|GR|CLASS|STD|G)\s*0?(\d{1,2})\b/) || [])[1]);
+  return !n ? '' : n <= 6 ? 'PRIMARY' : n <= 9 ? 'JUNIOR' : 'SENIOR';
+}
+const sectionOptions = (sel = '') => `<option value="">— choose —</option>${SECTIONS.map((s) => `<option ${s === sel ? 'selected' : ''}>${s}</option>`).join('')}`;
 const opt = (rows, val = (r) => r.id, label = (r) => r.name, sel) => rows.map((r) => `<option value="${esc(val(r))}" ${val(r) === sel ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
 const campusField = (centers) => centers.length > 1 ? `<div><label class="f" for="center">Campus</label><select class="i" id="center">${opt(centers)}</select></div>` : '';
 const val = (el, id) => ($('#' + id, el)?.value ?? '').trim();
@@ -16,11 +25,16 @@ async function classes(el, ctx) {
     <div><label class="f" for="name">Class name *</label><input class="i" id="name" placeholder="Form 3 West"></div>
     <div><label class="f" for="grade">Grade / form *</label><input class="i" id="grade" placeholder="Form 3  or  Grade 8"></div>
     <div><label class="f" for="stream">Stream</label><input class="i" id="stream" placeholder="West"></div>
-    <div><label class="f" for="section">Section</label><select class="i" id="section">${SECTIONS.map((s) => `<option>${s}</option>`).join('')}</select></div>${campusField(centers)}</div>
+    <div><label class="f" for="section">Section *</label><select class="i" id="section">${sectionOptions()}</select><div class="sm mut" id="secHint"></div></div>${campusField(centers)}</div>
     <p class="sm mut">"Form N" classes use 8-4-4 grading; "Grade N" classes use CBC.</p><button class="btn primary" id="add">Add class</button></div>
   <div class="card pad0" style="margin-top:18px">${table(['Class', 'Grading', 'Students', 'Class teacher', ''], cls.map((c) => [`<b>${esc(c.name)}</b>`, pill(c.grading_scheme === 'cbc' ? 'CBC' : '8-4-4'), c.student_count, `<select class="i" data-ct="${c.id}" style="min-width:160px"><option value="">— none —</option>${opt(teachers, (t) => t.id, (t) => t.full_name, c.class_teacher_id)}</select>`, `<button class="btn sm danger" data-del="${c.id}">Delete</button>`]), { empty: 'No classes yet. Add your first one above.' })}</div>`;
+  let touched = false;                                   // once someone picks a section themselves, stop guessing
+  $('#section', el).onchange = () => { touched = true; };
+  const guess = () => { if (touched) return; const g = sectionOf(val(el, 'grade')) || sectionOf(val(el, 'name')); $('#section', el).value = g; $('#secHint', el).textContent = g ? 'Suggested from the grade. Change it if it is wrong.' : ''; };
+  $('#grade', el).oninput = guess; $('#name', el).oninput = guess;
   $('#add', el).onclick = (e) => run(e.currentTarget, async () => {
     if (!val(el, 'name') || !val(el, 'grade')) return toast('Class name and grade are required.', 'bad');
+    if (!val(el, 'section')) return toast('Choose the section, for example Senior for Form 3 or Junior for Grade 8.', 'bad');
     await api('/classes', { method: 'POST', body: { name: val(el, 'name'), grade: val(el, 'grade'), stream: val(el, 'stream'), section: val(el, 'section'), centerId: val(el, 'center') || undefined } });
     toast('Class added', 'ok'); classes(el, ctx);
   });
@@ -63,7 +77,7 @@ async function teachers(el, ctx) {
     <div><label class="f" for="fn">Full name *</label><input class="i" id="fn"></div>
     <div><label class="f" for="em">Email (their login) *</label><input class="i" id="em" type="email"></div>
     <div><label class="f" for="ph">Phone</label><input class="i" id="ph" type="tel"></div>
-    <div><label class="f" for="sec">Section *</label><select class="i" id="sec">${SECTIONS.map((s) => `<option>${s}</option>`).join('')}</select></div>
+    <div><label class="f" for="sec">Section *</label><select class="i" id="sec">${sectionOptions()}</select></div>
     <div><label class="f" for="pw">Temporary password *</label><input class="i" id="pw" value="${Math.random().toString(36).slice(2, 10)}"></div>${campusField(centers)}</div>
     <p class="sm mut">They'll be asked to choose their own password the first time they sign in. Then assign their classes and subjects below.</p>
     <div class="row"><button class="btn primary" id="add">Add teacher</button><a class="btn" href="#/app/setupxl">Import from Excel</a></div></div>
@@ -71,6 +85,7 @@ async function teachers(el, ctx) {
     `<div class="row" style="gap:6px"><button class="btn sm" data-assign="${t.id}">Classes & subjects</button><button class="btn sm" data-reset="${t.id}">Reset password</button><button class="btn sm danger" data-del="${t.id}">Delete</button></div>`]), { empty: 'No teachers yet.' })}</div>`;
   $('#add', el).onclick = (e) => run(e.currentTarget, async () => {
     if (!val(el, 'fn') || !val(el, 'em') || !val(el, 'pw')) return toast('Name, email and a temporary password are required.', 'bad');
+    if (!val(el, 'sec')) return toast('Choose the section this teacher works in.', 'bad');
     await api('/teachers', { method: 'POST', body: { fullName: val(el, 'fn'), email: val(el, 'em'), phone: val(el, 'ph'), section: val(el, 'sec'), password: val(el, 'pw'), centerId: val(el, 'center') || undefined } });
     modal(`<h3>Teacher added</h3><p>Give ${esc(val(el, 'fn'))} these sign-in details:</p><p>Email: <span class="secret">${esc(val(el, 'em'))}</span><br>Temporary password: <span class="secret">${esc(val(el, 'pw'))}</span></p><button class="btn primary" data-close>Done</button>`);
     teachers(el, ctx);
@@ -113,7 +128,7 @@ async function students(el, ctx) {
   const attCell = (s) => { const a = rates[s.id]; return a?.rate != null ? `<div class="attb"><div class="bar"><i style="width:${a.rate}%;background:${bandColor(a.rate)}"></i></div><span class="sm b">${num(a.rate)}%</span></div>` : '<span class="mut">—</span>'; };
   const tr = (s) => { const i = info(s), m = i?.mean, b = band(m);
     return `<tr class="click" data-go="${s.id}"><td><input type="checkbox" data-s="${s.id}" aria-label="Select ${esc(s.full_name)}"></td>
-      <td><div class="who"><span class="ava b${b || 0}">${esc(initials(s.full_name))}</span><div><b>${esc(s.full_name)}</b>${cleared.has(s.id) ? ' <span class="pill ok">Fees cleared</span>' : ''}<div class="mut sm">Adm ${esc(s.school_id_number)}</div></div></div></td>
+      <td><div class="stu"><span class="ava b${b || 0}">${esc(initials(s.full_name))}</span><div><b>${esc(s.full_name)}</b>${cleared.has(s.id) ? ' <span class="pill ok">Fees cleared</span>' : ''}<div class="mut sm">Adm ${esc(s.school_id_number)}</div></div></div></td>
       <td>${esc(clsName[s.class_id] || '—')}</td><td>${attCell(s)}</td><td>${m != null ? `<b>${num(m)}%</b>` : '<span class="mut">—</span>'}</td><td>${b ? bandPill(m) : '<span class="pill">No marks</span>'}</td><td class="mut">›</td></tr>`; };
 
   el.innerHTML = `${ctx.bar('Students', `${list.length} students`, '<button class="btn sm" id="exp">Export</button><button class="btn sm" id="saveView">Save this view</button><button class="btn sm primary" id="toggleAdd">+ Add student</button>')}
