@@ -16,7 +16,9 @@ const lum = (hex) => { const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
 test('the palette from the brand is present', () => {
-  assert.equal(light.navy.toLowerCase(), '#1a237e'); assert.equal(light.green.toLowerCase(), '#2e7d32'); assert.equal(light.gold.toLowerCase(), '#fbc02d');
+  assert.equal(light.navy.toLowerCase(), '#0b1530'); assert.equal(light.primary.toLowerCase(), '#1e2b6b'); assert.equal(light.gold.toLowerCase(), '#f5b921');
+  // the five performance levels: blue, green, yellow, orange, red
+  assert.deepEqual(['b5', 'b4', 'b3', 'b2', 'b1'].map((k) => light[k].toLowerCase()), ['#1f4fd1', '#16a34a', '#eab308', '#f97316', '#dc2626']);
   assert.ok(light.red && light.red.startsWith('#'));
 });
 test('every colour variable used in css and scripts is defined', () => {

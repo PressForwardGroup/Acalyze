@@ -2,13 +2,14 @@
 :root{
   --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#F8FAFC; --ink:#0F172A; --mut:#5B6578; --line:#E2E8F0; --line2:#EEF2F7;
   --navy:#0B1530; --navy2:#13224A; --primary:#1E2B6B; --primary2:#16205A; --link:#1E2B6B; --on-primary:#FFFFFF;
-  --green:#15803D; --green2:#16A34A; --gold:#F5B921; --gold-ink:#8A5A00; --red:#DC2626; --on-navy:#FFFFFF;
-  --ok:#15803D; --ok-bg:#E7F6EC; --warn:#8A5A00; --warn-bg:#FEF3C7; --bad:#B91C1C; --bad-bg:#FEE9E9; --info:#1F4FD1; --info-bg:#E8EEFD;
+  --green:#147A3A; --green2:#16A34A; --gold:#F5B921; --gold-ink:#8A5A00; --red:#DC2626; --on-navy:#FFFFFF;
+  --ok:#147A3A; --ok-bg:#E7F6EC; --warn:#8A5A00; --warn-bg:#FEF3C7; --bad:#B91C1C; --bad-bg:#FEE9E9; --info:#1F4FD1; --info-bg:#E8EEFD;
   --on-green:#FFFFFF; --on-gold:#2A1B00; --on-red:#FFFFFF;
   --c1:#34459A; --c2:#F5B921; --c3:#16A34A; --c4:#8E9BD6; --c5:#DC2626; --c6:#5CC48A;
   --b5:#1F4FD1; --b4:#16A34A; --b3:#EAB308; --b2:#F97316; --b1:#DC2626;
   --b5bg:#E8EEFD; --b4bg:#E7F6EC; --b3bg:#FEF6D0; --b2bg:#FFEBDD; --b1bg:#FEE9E9;
-  --b5ink:#1A3FA8; --b4ink:#15803D; --b3ink:#8A6A00; --b2ink:#C2410C; --b1ink:#B91C1C;
+  --b5ink:#1A3FA8; --b4ink:#147A3A; --b3ink:#8A6A00; --b2ink:#C2410C; --b1ink:#B91C1C;
+  --tone:transparent;
   --ring:rgba(30,43,107,.25);
   --shadow:0 1px 2px rgba(15,23,42,.05),0 6px 18px -8px rgba(15,23,42,.12);
   --shadow-lg:0 2px 4px rgba(15,23,42,.05),0 24px 48px -16px rgba(15,23,42,.22);
@@ -293,7 +294,7 @@ svg .val{fill:var(--ink);font-weight:600}
   /* paper is always light, even if the screen is in dark mode, and the colour scale must still print */
   :root,:root[data-theme="dark"]{--bg:#fff;--surface:#fff;--surface2:#F8FAFC;--ink:#0F172A;--mut:#4B5563;--line:#CBD5E1;--line2:#E5E7EB;
     --b5:#1F4FD1;--b4:#16A34A;--b3:#EAB308;--b2:#F97316;--b1:#DC2626;--b5bg:#E8EEFD;--b4bg:#E7F6EC;--b3bg:#FEF6D0;--b2bg:#FFEBDD;--b1bg:#FEE9E9;
-    --b5ink:#1A3FA8;--b4ink:#15803D;--b3ink:#8A6A00;--b2ink:#C2410C;--b1ink:#B91C1C;--ok:#15803D;--warn:#8A5A00;--bad:#B91C1C;--info:#1F4FD1;--c1:#34459A;--c2:#F5B921;--c3:#16A34A;--c4:#8E9BD6;--c5:#DC2626;--c6:#5CC48A;color-scheme:light}
+    --b5ink:#1A3FA8;--b4ink:#147A3A;--b3ink:#8A6A00;--b2ink:#C2410C;--b1ink:#B91C1C;--ok:#147A3A;--warn:#8A5A00;--bad:#B91C1C;--info:#1F4FD1;--c1:#34459A;--c2:#F5B921;--c3:#16A34A;--c4:#8E9BD6;--c5:#DC2626;--c6:#5CC48A;color-scheme:light}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 

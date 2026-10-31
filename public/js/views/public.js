@@ -18,7 +18,7 @@ export function publicHome(root) {
     <div class="paper" aria-hidden="true">
       <div class="center" style="border-bottom:2px solid #0B1530;padding-bottom:8px;margin-bottom:12px"><div class="b" style="font-family:var(--serif)">Riverside Academy</div><div class="sm" style="color:#5B6578">Term 2 Report · Form 3</div></div>
       <div class="row sm" style="justify-content:space-between;margin-bottom:8px;color:#5B6578"><span>Amara Otieno</span><span>Position 3 of 210</span></div>
-      ${[['Mathematics', 'A'], ['English', 'B+'], ['Chemistry', 'A-']].map(([s, g]) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #EEF2F7"><span>${s}</span><b style="color:#15803D">${g}</b></div>`).join('')}
+      ${[['Mathematics', 'A'], ['English', 'B+'], ['Chemistry', 'A-']].map(([s, g]) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #EEF2F7"><span>${s}</span><b style="color:#147A3A">${g}</b></div>`).join('')}
       <div class="sm" style="margin-top:12px;color:#8A5A00;font-weight:600">Overall: A- · Very good</div></div></section>
   <section class="steps">${[['1', 'Tell us about your school', 'Register with your school name, location and rough student numbers.'],
     ['2', 'We review and approve', "A short check, then your school's own private workspace is created."],

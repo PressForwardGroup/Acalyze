@@ -148,7 +148,8 @@ export function band(pct) {
   const v = +pct;
   return v >= BAND_CUTS[0] ? 5 : v >= BAND_CUTS[1] ? 4 : v >= BAND_CUTS[2] ? 3 : v >= BAND_CUTS[3] ? 2 : 1;
 }
-export const bandColor = (pct) => { const b = band(pct); return b ? `var(--b${b})` : 'var(--line)'; };
+const BAND_VARS = [null, 'var(--b1)', 'var(--b2)', 'var(--b3)', 'var(--b4)', 'var(--b5)'];
+export const bandColor = (pct) => BAND_VARS[band(pct)] || 'var(--line)';
 // A coloured chip with the level written out, so the colour is never the only signal.
 export const bandPill = (pct, text) => { const b = band(pct); return b ? `<span class="pill b${b}">${esc(text ?? BAND_LABELS[b])}</span>` : '<span class="mut">—</span>'; };
 export const bandTone = (pct) => { const b = band(pct); return b ? 'b' + b : ''; };
